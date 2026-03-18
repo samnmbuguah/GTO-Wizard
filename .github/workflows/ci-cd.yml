@@ -1,0 +1,199 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  NODE_VERSION: '18'
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  frontend-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+        
+    - name: Install dependencies
+      working-directory: ./frontend
+      run: npm ci --legacy-peer-deps
+      
+    - name: Run type checking
+      working-directory: ./frontend
+      run: npm run type-check
+      
+    - name: Run linting
+      working-directory: ./frontend
+      run: npm run lint:check
+      
+    - name: Check formatting
+      working-directory: ./frontend
+      run: npm run format:check
+      
+    - name: Run tests
+      working-directory: ./frontend
+      run: npm run test:coverage
+      
+    - name: Build frontend
+      working-directory: ./frontend
+      run: npm run build
+      
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./frontend/coverage/lcov.info
+        flags: frontend
+        name: frontend-coverage
+
+  backend-tests:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_gtowizard
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+          
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      working-directory: ./backend
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Run linting
+      working-directory: ./backend
+      run: |
+        python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        python -m flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        
+    - name: Run migrations
+      working-directory: ./backend
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_gtowizard
+      run: |
+        python manage.py makemigrations
+        python manage.py migrate
+        
+    - name: Run tests
+      working-directory: ./backend
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_gtowizard
+      run: |
+        python manage.py test
+
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  build-and-deploy:
+    needs: [frontend-tests, backend-tests, security-scan]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Login to Docker Hub (optional)
+      if: secrets.DOCKER_USERNAME != ''
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+        
+    - name: Build and push Docker images
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: false
+        tags: |
+          gtowizard-frontend:latest
+          gtowizard-backend:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        
+    - name: Deploy to staging
+      if: secrets.DEPLOY_HOST != ''
+      run: |
+        echo "Deploying to staging environment..."
+        # Add your deployment commands here
+        # This could involve SSH to your server, kubectl commands, etc.
+        
+    - name: Health check
+      if: secrets.DEPLOY_HOST != ''
+      run: |
+        echo "Running health checks..."
+        # Add health check commands here
+
+  notify:
+    needs: [build-and-deploy]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Notify on success
+      if: needs.build-and-deploy.result == 'success'
+      run: |
+        echo "✅ Deployment completed successfully!"
+        # Add Slack/Teams/Discord notification here
+        
+    - name: Notify on failure
+      if: needs.build-and-deploy.result == 'failure'
+      run: |
+        echo "❌ Deployment failed!"
+        # Add Slack/Teams/Discord notification here
