@@ -12,7 +12,8 @@ import {
   Sword,
   BookOpen,
   Sun,
-  Moon
+  Moon,
+  LogOut
 } from 'lucide-react';
 
 interface SidebarItemProps {
@@ -116,7 +117,19 @@ export const DashboardLayout = ({ children }: { children: React.ReactNode }) => 
           <div className={`mt-8 mb-2 px-6 text-[10px] font-bold text-muted uppercase tracking-widest ${isCollapsed ? 'hidden' : ''}`}>System</div>
           <SidebarItem to="/account" icon={<User className="w-5 h-5" />} label="Account" collapsed={isCollapsed} />
           <SidebarItem to="/settings" icon={<Settings className="w-5 h-5" />} label="Settings" collapsed={isCollapsed} />
-        </nav>
+      
+      <div className={`mt-auto mb-2 px-6 text-[10px] font-bold text-muted uppercase tracking-widest ${isCollapsed ? 'hidden' : ''}`}>Session</div>
+      <SidebarItem 
+        to="/login" 
+        icon={<LogOut className="w-5 h-5 text-rose-500" />} 
+        label="Logout" 
+        collapsed={isCollapsed} 
+        onClick={() => {
+          localStorage.removeItem('gto_token');
+          localStorage.removeItem('gto_user');
+        }}
+      />
+    </nav>
 
         <div className="p-4 border-t border-border">
           <div className={`flex items-center gap-3 p-2 rounded-xl bg-background/40 ${isCollapsed ? 'justify-center' : ''}`}>

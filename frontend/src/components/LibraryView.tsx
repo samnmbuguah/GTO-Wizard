@@ -108,30 +108,30 @@ const LibraryView: React.FC = () => {
           ))
         ) : filteredSolutions.length > 0 ? (
           filteredSolutions.map((spot) => (
-            <div key={spot.id} className="group bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 hover:border-indigo-500 transition-all hover:shadow-2xl hover:shadow-indigo-500/10 hover:-translate-y-2 cursor-pointer relative overflow-hidden">
+            <div key={spot.id} className="group bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-300/30 dark:border-slate-800 hover:border-indigo-500 transition-all shadow-xl shadow-slate-200/50 dark:shadow-none hover:shadow-2xl hover:shadow-indigo-500/10 hover:-translate-y-1 cursor-pointer relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-indigo-500/10 transition-colors"></div>
               
-              <div className="w-14 h-14 bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-500 mb-6 group-hover:bg-indigo-500 group-hover:text-white transition-all shadow-inner">
+              <div className="w-14 h-14 bg-indigo-600/5 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600 dark:text-indigo-500 mb-6 group-hover:bg-indigo-500 group-hover:text-white transition-all shadow-sm">
                 <Database className="w-7 h-7" />
               </div>
               
-              <h3 className="text-xl font-black mb-3 text-slate-900 dark:text-white leading-tight">{spot.name}</h3>
+              <h3 className="text-xl font-black mb-3 text-slate-800 dark:text-white leading-tight">{spot.name}</h3>
               
               <div className="flex flex-wrap gap-2 mb-6">
-                <span className="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-[10px] font-black text-slate-500 dark:text-slate-400 rounded-full uppercase tracking-widest border border-slate-200 dark:border-slate-700/50">
+                <span className="px-3 py-1 bg-slate-50 dark:bg-slate-800 text-[10px] font-black text-slate-600 dark:text-slate-400 rounded-full uppercase tracking-widest border border-slate-200 dark:border-slate-700/50">
                    Rake: {( (spot.rake || 0) * 100 ).toFixed(1)}%
                 </span>
-                <span className="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-[10px] font-black text-slate-500 dark:text-slate-400 rounded-full uppercase tracking-widest border border-slate-200 dark:border-slate-700/50">
+                <span className="px-3 py-1 bg-slate-50 dark:bg-slate-800 text-[10px] font-black text-slate-600 dark:text-slate-400 rounded-full uppercase tracking-widest border border-slate-200 dark:border-slate-700/50">
                    Depth: {spot.stack_depth}bb
                 </span>
               </div>
 
               <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest border-t border-slate-100 dark:border-slate-800/50 pt-6">
-                <div className="flex items-center gap-2 text-indigo-500">
-                  <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse"></div>
+                <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
+                  <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.5)]"></div>
                   <span>Instant View Ready</span>
                 </div>
-                <div className="flex items-center gap-1 group-hover:translate-x-1 transition-transform text-slate-400 group-hover:text-indigo-500 font-black">
+                <div className="flex items-center gap-1 group-hover:translate-x-1 transition-transform text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 font-black">
                   <span>Browse</span>
                   <ChevronRight className="w-3 h-3" />
                 </div>

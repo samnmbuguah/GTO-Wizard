@@ -18,7 +18,10 @@ const LoginView: React.FC = () => {
       const res = await fetch('http://213.199.50.129:8000/api/token-auth/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ 
+          username: username.trim(), 
+          password: password.trim() 
+        }),
       });
 
       if (res.ok) {
