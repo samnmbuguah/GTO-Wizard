@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, 
-  Database, 
+  Search,
   Settings, 
   User, 
   ChevronRight,
@@ -10,10 +10,11 @@ import {
   Menu,
   X,
   Sword,
-  BookOpen,
+  TrendingUp,
+  LogOut,
+  BarChart,
   Sun,
-  Moon,
-  LogOut
+  Moon
 } from 'lucide-react';
 
 interface SidebarItemProps {
@@ -102,8 +103,9 @@ export const DashboardLayout = ({ children }: { children: React.ReactNode }) => 
 
         <nav className="flex-1 overflow-y-auto py-4 space-y-1">
           <SidebarItem to="/dashboard" icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard" collapsed={isCollapsed} />
-          <SidebarItem to="/library" icon={<Database className="w-5 h-5" />} label="Library" collapsed={isCollapsed} />
-          <SidebarItem to="/study" icon={<BookOpen className="w-5 h-5" />} label="Study" collapsed={isCollapsed} />
+          <SidebarItem to="/library" icon={<Search className="w-5 h-5" />} label="Library" collapsed={isCollapsed} />
+          <SidebarItem to="/reports" icon={<BarChart className="w-5 h-5" />} label="Reports" collapsed={isCollapsed} />
+          <SidebarItem to="/study" icon={<TrendingUp className="w-5 h-5" />} label="Trainer" collapsed={isCollapsed} />
           
           <div className={`mt-8 mb-2 px-6 text-[10px] font-bold text-muted uppercase tracking-widest ${isCollapsed ? 'hidden' : ''}`}>Theme</div>
           <SidebarItem 

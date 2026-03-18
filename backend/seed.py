@@ -17,6 +17,33 @@ else:
     u.save()
     print("Superuser password updated to secure value.")
 
+# Create diverse textured solutions
+textures = [
+    ('High Board', 'High'),
+    ('Low Board', 'Low'),
+    ('Monotone Board', 'Monotone'),
+    ('Paired Board', 'Paired'),
+]
+
+for name_suffix, texture in textures:
+    sol, created = Solution.objects.get_or_create(
+        name=f"6-Max Cash 100bb {name_suffix}",
+        defaults={
+            'rake': 0.05,
+            'stack_depth': 100,
+            'flop_texture': texture
+        }
+    )
+    if created or not StrategyNode.objects.filter(solution=sol, path='root').exists():
+        StrategyNode.objects.create(
+            solution=sol,
+            path='root',
+            hand='AA',
+            actions={'Fold': 0.1, 'Call': 0.3, 'Raise': 0.6} if texture == 'High' else {'Fold': 0.6, 'Call': 0.3, 'Raise': 0.1}
+        )
+
+print("Database seeded with textured solutions and strategy nodes.")
+
 # Create a test solution
 solution, created = Solution.objects.get_or_create(
     name="6-Max Cash 100bb Open SB",

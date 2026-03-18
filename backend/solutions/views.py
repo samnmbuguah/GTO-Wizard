@@ -1,6 +1,44 @@
 from rest_framework import viewsets, permissions
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from django.db.models import Avg, Sum
 from .models import Solution, StrategyNode, StrategyLock
 from .serializers import SolutionSerializer, StrategyNodeSerializer, StrategyLockSerializer
+
+class AggregateReportView(APIView):
+    def get(self, request):
+        textures = [t[0] for t in Solution._meta.get_field('flop_texture').choices]
+        report = []
+        
+        for texture in textures:
+            solutions = Solution.objects.filter(flop_texture=texture)
+            if not solutions.exists():
+                continue
+            
+            # Get root nodes for these solutions
+            root_nodes = StrategyNode.objects.filter(solution__in=solutions, path='root')
+            
+            total_fold = 0
+            total_call = 0
+            total_raise = 0
+            count = root_nodes.count()
+            
+            if count > 0:
+                for node in root_nodes:
+                    strat = node.actions or {}
+                    total_fold += strat.get('Fold', strat.get('fold', 0))
+                    total_call += strat.get('Call', strat.get('call', 0))
+                    total_raise += strat.get('Raise', strat.get('raise', 0))
+                
+                report.append({
+                    'texture': texture,
+                    'avg_fold': total_fold / count,
+                    'avg_call': total_call / count,
+                    'avg_raise': total_raise / count,
+                    'sample_size': count
+                })
+        
+        return Response(report)
 
 class SolutionViewSet(viewsets.ModelViewSet):
     queryset = Solution.objects.all()

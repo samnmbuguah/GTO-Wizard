@@ -9,6 +9,7 @@ const LibraryView = lazy(() => import('./components/LibraryView'))
 const AccountView = lazy(() => import('./components/AccountView'))
 const SettingsView = lazy(() => import('./components/SettingsView'))
 const StudyView = lazy(() => import('./components/StudyView'))
+const ReportsView = lazy(() => import('./components/ReportsView'))
 const LoginView = lazy(() => import('./components/LoginView'))
 
 // Auth Guard Component
@@ -101,6 +102,7 @@ function App() {
                     <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     <Route path="/dashboard" element={<DashboardView nodes={nodes} onHandSelect={handleHandSelect} />} />
                     <Route path="/library" element={<LibraryView />} />
+                    <Route path="/reports" element={<ReportsView />} />
                     <Route path="/study" element={<StudyView nodes={nodes} />} />
                     <Route path="/account" element={<AccountView />} />
                     <Route path="/settings" element={<SettingsView />} />

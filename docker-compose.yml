@@ -12,6 +12,8 @@ services:
 
   backend:
     build: ./backend
+    volumes:
+      - ./backend:/app
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/gtowizard
     depends_on:
@@ -21,6 +23,9 @@ services:
 
   frontend:
     build: ./frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
     ports:
       - "8089:80"
     depends_on:

@@ -2,9 +2,16 @@ from django.db import models
 
 class Solution(models.Model):
     name = models.CharField(max_length=255)
-    rake = models.FloatField(null=True, blank=True)
-    stack_depth = models.IntegerField(null=True, blank=True)
-    description = models.TextField(null=True, blank=True)
+    rake = models.FloatField(default=0.0)
+    stack_depth = models.IntegerField(default=100)
+    flop_texture = models.CharField(max_length=50, default='Rainbow', choices=[
+        ('High', 'High Board'),
+        ('Low', 'Low Board'),
+        ('Paired', 'Paired Board'),
+        ('Monotone', 'Monotone Board'),
+        ('Rainbow', 'Rainbow Board'),
+        ('Straight-Friendly', 'Straight-Friendly'),
+    ])
     config = models.JSONField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
