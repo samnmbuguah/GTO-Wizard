@@ -1,45 +1,66 @@
-import { useState, useEffect } from 'react';
-import { DashboardLayout } from './components/DashboardLayout';
-import StrategyMatrix from './components/StrategyMatrix';
-import type { StrategyNode } from './types/poker';
+import { useState, useEffect } from 'react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { DashboardLayout } from './components/DashboardLayout'
+import DashboardView from './components/DashboardView'
+import LibraryView from './components/LibraryView'
+import AccountView from './components/AccountView'
+import SettingsView from './components/SettingsView'
+import type { StrategyNode } from './types/poker'
 
 function App() {
-  const [nodes, setNodes] = useState<StrategyNode[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [nodes, setNodes] = useState<StrategyNode[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Fetch test data from Django backend
-    const fetchNodes = async () => {
+    const fetchData = async () => {
       try {
-        const response = await fetch('http://213.199.50.129:8000/api/nodes/?solution_id=1&path=root');
-        const data = await response.json();
-        setNodes(data);
+        setLoading(true)
+        const solRes = await fetch('http://213.199.50.129:8000/api/solutions/')
+        const solutions = await solRes.json()
+        if (solutions.length > 0) {
+          const firstSol = solutions[0]
+          const nodeRes = await fetch(`http://213.199.50.129:8000/api/nodes/?solution_id=${firstSol.id}&path=root`)
+          const nodesData = await nodeRes.json()
+          setNodes(nodesData)
+        }
       } catch (error) {
-        console.error("Failed to fetch nodes:", error);
+        console.error('Failed to fetch data:', error)
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
-    };
-    fetchNodes();
-  }, []);
+    }
+    fetchData()
+  }, [])
 
-  return (
-    <DashboardLayout>
-      <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-700">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          <div className="lg:col-span-12">
-            {loading ? (
-              <div className="flex items-center justify-center p-20">
-                <div className="w-12 h-12 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"></div>
-              </div>
-            ) : (
-              <StrategyMatrix nodes={nodes} onHandSelect={(hand) => console.log("Selected hand:", hand)} />
-            )}
-          </div>
+  const handleHandSelect = (hand: string) => {
+    console.log('Selected hand:', hand)
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-indigo-500 text-sm font-bold animate-pulse">Initializing GTO Data...</p>
         </div>
       </div>
-    </DashboardLayout>
-  );
+    )
+  }
+
+  return (
+    <BrowserRouter>
+      <DashboardLayout>
+        <Routes>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<DashboardView nodes={nodes} onHandSelect={handleHandSelect} />} />
+          <Route path="/library" element={<LibraryView />} />
+          <Route path="/study" element={<div className="p-8 text-center py-20 bg-card rounded-3xl border border-border shadow-xl"><h2 className="text-2xl font-bold">Study Mode</h2><p className="text-muted mt-2">Coming Soon: Interactive training and drills.</p></div>} />
+          <Route path="/account" element={<AccountView />} />
+          <Route path="/settings" element={<SettingsView />} />
+        </Routes>
+      </DashboardLayout>
+    </BrowserRouter>
+  )
 }
 
-export default App;
+export default App

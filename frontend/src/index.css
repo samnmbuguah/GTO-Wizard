@@ -9,11 +9,11 @@
 }
 
 :root {
-  --background: #ffffff;
+  --background: #f1f5f9;
   --foreground: #0f172a;
-  --card: #f8fafc;
-  --border: #e2e8f0;
-  --muted: #64748b;
+  --card: #ffffff;
+  --border: #cbd5e1;
+  --muted: #475569;
 }
 
 .dark {
@@ -25,16 +25,11 @@
 }
 
 body {
-  @apply bg-background text-foreground;
+  background: var(--background);
+  color: var(--foreground);
   -webkit-font-smoothing: antialiased;
   margin: 0;
   transition: background-color 0.3s, color 0.3s;
-}
-
-@layer components {
-  .glass {
-    @apply bg-white/5 backdrop-blur-lg border border-white/10;
-  }
 }
 
 /* Custom Animations */
@@ -53,34 +48,50 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-transparent;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-slate-400 rounded-full;
+  background: rgba(148, 163, 184, 0.5);
+  border-radius: 9999px;
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  @apply bg-slate-800;
+  background: rgba(51, 65, 85, 0.8);
 }
 
 /* Legibility & Matrix Polish */
 .custom-hand-matrix {
-  @apply select-none;
+  user-select: none;
 }
 
 .custom-hand-matrix span {
-  @apply font-bold text-[11px] drop-shadow-sm transition-colors duration-200;
-  color: #ffffff; /* Default for dark cells */
+  font-weight: 700;
+  font-size: 11px;
+  transition: color 0.2s;
+  color: #ffffff; /* Default for dark mode matrix */
+  text-shadow: 0 1px 2px rgba(0,0,0,1);
 }
 
 /* Light mode specific label contrast */
 :root:not(.dark) .custom-hand-matrix span {
-  color: #1e293b;
+  color: #000000;
+  text-shadow: 0 0 4px #ffffff;
 }
 
-/* Ensure light cell backgrounds (gray/fold) have dark text even in dark mode */
-.custom-hand-matrix [style*="background-color: rgb(226, 232, 240)"] span,
-.custom-hand-matrix [style*="background-color: #e2e8f0"] span {
-  color: #1e293b !important;
+/* Handle light cell backgrounds in dark mode */
+.dark .custom-hand-matrix [style*="background-color: rgb(226, 232, 240)"] span,
+.dark .custom-hand-matrix [style*="background-color: #e2e8f0"] span,
+.dark .custom-hand-matrix [style*="background-color: #f1f5f9"] span {
+  color: #0f172a !important;
+  text-shadow: none !important;
+}
+
+/* Matrix cell borders */
+.HandMatrix button {
+  border: 1px solid rgba(0, 0, 0, 0.05) !important;
+}
+
+.dark .HandMatrix button {
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
 }
