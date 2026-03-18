@@ -14,6 +14,7 @@ const StudyView: React.FC = () => {
   const [feedback, setFeedback] = useState<{ type: 'correct' | 'wrong' | 'marginal', message: string } | null>(null);
   const [score, setScore] = useState({ correct: 0, total: 0 });
   const [streak, setStreak] = useState(0);
+  const [sessionId, setSessionId] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -26,6 +27,15 @@ const StudyView: React.FC = () => {
         ]);
         setSolution(solData);
         setNodes(nodesData);
+        
+        // Create initial session
+        const session = await apiClient.post<any>('/sessions/', {
+          solution: solutionId,
+          correct_hands: 0,
+          total_hands: 0,
+          streak: 0
+        });
+        setSessionId(session.id);
       } catch (err) {
         console.error('Failed to fetch study data:', err);
       } finally {
@@ -75,6 +85,25 @@ const StudyView: React.FC = () => {
     setScore(s => ({ ...s, total: s.total + 1 }));
     setFeedback({ type, message });
   };
+
+  const syncSession = async (newScore: { correct: number, total: number }, newStreak: number) => {
+    if (!sessionId) return;
+    try {
+      await apiClient.patch(`/sessions/${sessionId}/`, {
+        correct_hands: newScore.correct,
+        total_hands: newScore.total,
+        streak: newStreak
+      });
+    } catch (err) {
+      console.error('Failed to sync session:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (score.total > 0) {
+      syncSession(score, streak);
+    }
+  }, [score, streak]);
 
   if (loading) {
     return (
@@ -187,7 +216,19 @@ const StudyView: React.FC = () => {
 
       <div className="flex justify-center gap-4">
         <button 
-          onClick={() => setScore({ correct: 0, total: 0 })}
+          onClick={async () => {
+            setScore({ correct: 0, total: 0 });
+            setStreak(0);
+            if (solutionId) {
+               const session = await apiClient.post<any>('/sessions/', {
+                 solution: solutionId,
+                 correct_hands: 0,
+                 total_hands: 0,
+                 streak: 0
+               });
+               setSessionId(session.id);
+            }
+          }}
           className="flex items-center gap-2 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-muted hover:text-rose-500 transition-colors"
         >
           <RefreshCw className="w-3 h-3" />
