@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import type { StrategyNode, Solution } from '../types/poker';
 import HandVisualizer from './HandVisualizer';
+import StrategyMatrix from './StrategyMatrix';
 import { apiClient } from '../api/client';
 import { Trophy, Flame, ChevronRight, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
 
@@ -86,6 +87,8 @@ const StudyView: React.FC = () => {
     setFeedback({ type, message });
   };
 
+  const [showMatrix, setShowMatrix] = useState(false);
+
   const syncSession = async (newScore: { correct: number, total: number }, newStreak: number) => {
     if (!sessionId) return;
     try {
@@ -126,7 +129,7 @@ const StudyView: React.FC = () => {
           </div>
           <div>
             <p className="text-[10px] uppercase font-bold text-muted tracking-widest">Accuracy</p>
-            <p className="text-xl font-black">{score.total > 0 ? ((score.correct / score.total) * 100).toFixed(1) : 0}%</p>
+            <p className="text-xl font-black text-foreground">{score.total > 0 ? ((score.correct / score.total) * 100).toFixed(1) : 0}%</p>
           </div>
         </div>
         <div className="bg-card p-4 rounded-3xl border border-border shadow-md flex items-center gap-4">
@@ -135,99 +138,134 @@ const StudyView: React.FC = () => {
           </div>
           <div>
             <p className="text-[10px] uppercase font-bold text-muted tracking-widest">Streak</p>
-            <p className="text-xl font-black">{streak}</p>
+            <p className="text-xl font-black text-foreground">{streak}</p>
           </div>
         </div>
       </div>
 
-      <div className="bg-card p-8 md:p-12 rounded-[3.5rem] border border-border shadow-2xl relative overflow-hidden backdrop-blur-md">
+      <div className="bg-card p-8 md:p-12 rounded-[3.5rem] border border-border shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
         
         {/* Scenario Info */}
-        <div className="text-center space-y-2 mb-12">
-          <p className="text-[10px] uppercase font-bold text-indigo-500 tracking-[0.2em]">Current Spot</p>
-          <h2 className="text-3xl font-black tracking-tight">{solution?.name || 'SB Open vs BB'}</h2>
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-muted/10 rounded-full text-[10px] font-bold text-muted uppercase">
-            <span>{solution?.stack_depth}bb Effective</span>
+        <div className="flex items-center justify-between mb-12">
+          <div className="space-y-1">
+            <p className="text-[10px] uppercase font-bold text-indigo-500 tracking-[0.2em]">Trainer Mode</p>
+            <h2 className="text-2xl font-black text-foreground tracking-tight">{solution?.name || 'SB Open vs BB'}</h2>
           </div>
+          <button 
+            onClick={() => setShowMatrix(!showMatrix)}
+            className="px-4 py-2 bg-zinc-900 border border-border rounded-xl text-[10px] font-bold text-muted hover:text-foreground transition-all uppercase tracking-widest flex items-center gap-2"
+          >
+            <AlertCircle className="w-4 h-4" />
+            <span>{showMatrix ? 'Hide Range' : 'Review Range'}</span>
+          </button>
         </div>
 
-        {/* Hand Display */}
-        <div className="py-8 transform transition-all hover:scale-105 cursor-default">
-          <HandVisualizer hand={currentHand.hand} />
-        </div>
-
-        {/* Actions or Feedback */}
-        <div className="mt-12">
-          {!feedback ? (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {['Fold', 'Call', 'Raise'].map((action) => (
-                <button
-                  key={action}
-                  onClick={() => handleAction(action)}
-                  className={`py-5 rounded-2xl text-base font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 ${
-                    action === 'Raise' ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/20' :
-                    action === 'Call' ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20' :
-                    'bg-slate-200 hover:bg-slate-300 text-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-white'
-                  }`}
-                >
-                  {action}
-                </button>
-              ))}
+        {showMatrix ? (
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-h-[600px] overflow-y-auto">
+            <StrategyMatrix nodes={nodes} />
+          </div>
+        ) : (
+          <>
+            {/* Hand Display */}
+            <div className="py-8 transform transition-all hover:scale-105 cursor-default relative">
+              <HandVisualizer hand={currentHand.hand} />
             </div>
-          ) : (
-            <div className={`p-8 rounded-3xl border animate-in flex flex-col items-center gap-6 ${
-              feedback.type === 'correct' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
-              feedback.type === 'marginal' ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' :
-              'bg-rose-500/10 border-rose-500/20 text-rose-500'
-            }`}>
-              <div className="flex items-center gap-4">
-                {feedback.type === 'correct' ? <CheckCircle2 className="w-8 h-8" /> : <AlertCircle className="w-8 h-8" />}
-                <p className="text-xl font-black uppercase tracking-tight">{feedback.message}</p>
-              </div>
 
-              <div className="w-full max-w-md bg-background/50 p-4 rounded-2xl space-y-3">
-                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted mb-2 text-center">Solver Strategy</p>
-                 {Object.entries(currentHand.actions).map(([action, freq]) => (
-                   <div key={action} className="flex items-center gap-4">
-                     <span className="w-12 text-[10px] font-bold uppercase text-muted">{action}</span>
-                     <div className="h-1.5 flex-1 bg-background rounded-full overflow-hidden">
-                        <div 
-                          className={`h-full ${action === 'raise' ? 'bg-rose-500' : action === 'call' ? 'bg-emerald-500' : 'bg-slate-400'}`}
-                          style={{ width: `${(freq || 0) * 100}%` }}
-                        ></div>
-                     </div>
-                     <span className="text-[10px] font-bold">{(freq * 100).toFixed(0)}%</span>
-                   </div>
-                 ))}
-              </div>
+            {/* Actions or Feedback */}
+            <div className="mt-12">
+              {!feedback ? (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {['Fold', 'Call', 'Raise'].map((action) => (
+                    <button
+                      key={action}
+                      onClick={() => handleAction(action)}
+                      className={`py-6 rounded-[2rem] text-sm font-black uppercase tracking-widest transition-all shadow-xl active:scale-95 group ${
+                        action === 'Raise' ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/20' :
+                        action === 'Call' ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20' :
+                        'bg-zinc-900 hover:bg-zinc-800 text-white border border-border'
+                      }`}
+                    >
+                      {action}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className={`p-8 rounded-[2.5rem] border animate-in flex flex-col items-center gap-8 ${
+                  feedback.type === 'correct' ? 'bg-emerald-500/5 border-emerald-500/20' :
+                  feedback.type === 'marginal' ? 'bg-amber-500/5 border-amber-500/20' :
+                  'bg-rose-500/5 border-rose-500/20'
+                }`}>
+                  <div className="text-center space-y-2">
+                    <div className={`w-12 h-12 mx-auto rounded-full flex items-center justify-center mb-4 ${
+                      feedback.type === 'correct' ? 'bg-emerald-500 text-white' :
+                      feedback.type === 'marginal' ? 'bg-amber-500 text-white' :
+                      'bg-rose-500 text-white'
+                    }`}>
+                      {feedback.type === 'correct' ? <CheckCircle2 className="w-6 h-6" /> : <AlertCircle className="w-6 h-6" />}
+                    </div>
+                    <p className={`text-xl font-black uppercase tracking-tight ${
+                       feedback.type === 'correct' ? 'text-emerald-500' :
+                       feedback.type === 'marginal' ? 'text-amber-500' :
+                       'text-rose-500'
+                    }`}>{feedback.message}</p>
+                  </div>
 
-              <button 
-                onClick={dealNewHand}
-                className="flex items-center gap-2 px-8 py-3 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-500 transition-all shadow-lg active:scale-95"
-              >
-                <span>Next Hand</span>
-                <ChevronRight className="w-4 h-4" />
-              </button>
+                  <div className="w-full max-w-sm bg-card p-6 rounded-3xl border border-border shadow-lg space-y-4">
+                     <p className="text-[10px] font-bold uppercase tracking-widest text-muted text-center flex items-center justify-center gap-2">
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                        GTO Strategy Breakdown
+                     </p>
+                     {Object.entries(currentHand.actions).map(([action, freq]) => (
+                       <div key={action} className="space-y-1">
+                         <div className="flex justify-between items-center px-1">
+                            <span className="text-[10px] font-bold uppercase text-muted">{action}</span>
+                            <span className="text-xs font-black text-foreground">{(freq * 100).toFixed(0)}%</span>
+                         </div>
+                         <div className="h-2 w-full bg-zinc-900 rounded-full overflow-hidden border border-border/50">
+                            <div 
+                              className={`h-full transition-all duration-1000 ${
+                                action === 'raise' ? 'bg-rose-500' : 
+                                action === 'call' ? 'bg-emerald-500' : 
+                                'bg-zinc-600'
+                              }`}
+                              style={{ width: `${(freq || 0) * 100}%` }}
+                            ></div>
+                         </div>
+                       </div>
+                     ))}
+                  </div>
+
+                  <button 
+                    onClick={dealNewHand}
+                    className="group flex items-center gap-3 px-10 py-4 bg-indigo-600 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-indigo-500 transition-all shadow-xl shadow-indigo-600/20 active:scale-95"
+                  >
+                    <span>Next Hand</span>
+                    <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                  </button>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
 
       <div className="flex justify-center gap-4">
         <button 
           onClick={async () => {
-            setScore({ correct: 0, total: 0 });
-            setStreak(0);
-            if (solutionId) {
-               const session = await apiClient.post<any>('/sessions/', {
-                 solution: solutionId,
-                 correct_hands: 0,
-                 total_hands: 0,
-                 streak: 0
-               });
-               setSessionId(session.id);
-            }
+             if (window.confirm('Are you sure you want to reset your session score?')) {
+                setScore({ correct: 0, total: 0 });
+                setStreak(0);
+                if (solutionId) {
+                   const session = await apiClient.post<any>('/sessions/', {
+                     solution: solutionId,
+                     correct_hands: 0,
+                     total_hands: 0,
+                     streak: 0
+                   });
+                   setSessionId(session.id);
+                }
+             }
           }}
           className="flex items-center gap-2 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-muted hover:text-rose-500 transition-colors"
         >
