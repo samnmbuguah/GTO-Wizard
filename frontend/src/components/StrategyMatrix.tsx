@@ -16,13 +16,17 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
     const isRaise = (node.actions['raise'] || 0) > 0.5;
     const isCall = (node.actions['call'] || 0) > 0.2;
     
+    const isDark = document.documentElement.classList.contains('dark');
+    
     // Using poker standard high-visibility colors
     // Raise: Red/Pink (#f43f5e)
     // Call: Green/Emerald (#10b981)
-    // Fold: Gray (#94a3b8)
+    // Fold: Dynamic based on theme
+    const foldColor = isDark ? '#1e293b' : '#f1f5f9';
+    
     return {
       combo: node.hand,
-      color: isRaise ? '#f43f5e' : isCall ? '#10b981' : '#f1f5f9',
+      color: isRaise ? '#f43f5e' : isCall ? '#10b981' : foldColor,
     };
   });
 
@@ -62,7 +66,7 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
               <span className="text-muted">Call</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 bg-[#f1f5f9] border border-border rounded-sm"></div> 
+              <div className="w-3 h-3 bg-card border border-border rounded-sm"></div> 
               <span className="text-muted">Fold</span>
             </div>
           </div>
