@@ -11,7 +11,7 @@ function App() {
     // Fetch test data from Django backend
     const fetchNodes = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/nodes/?solution_id=1&path=root');
+        const response = await fetch('http://213.199.50.129:8000/api/nodes/?solution_id=1&path=root');
         const data = await response.json();
         setNodes(data);
       } catch (error) {
