@@ -34,6 +34,38 @@ const LoadingSpinner = () => (
   </div>
 );
 
+import { useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { apiClient } from './api/client'
+
+const DashboardRedirect = () => {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const lastId = localStorage.getItem('gto_active_solution');
+    if (lastId) {
+      navigate(`/dashboard/${lastId}`, { replace: true });
+      return;
+    }
+
+    const fetchDefault = async () => {
+      try {
+        const solutions = await apiClient.get<any[]>('/solutions/');
+        if (solutions && solutions.length > 0) {
+          navigate(`/dashboard/${solutions[0].id}`, { replace: true });
+        } else {
+          navigate('/library', { replace: true });
+        }
+      } catch (err) {
+        navigate('/library', { replace: true });
+      }
+    };
+    fetchDefault();
+  }, [navigate]);
+
+  return <LoadingSpinner />;
+};
+
 function App() {
   return (
     <BrowserRouter>
@@ -48,7 +80,8 @@ function App() {
                 <SolutionProvider>
                   <DashboardLayout>
                     <Routes>
-                      <Route path="/" element={<Navigate to="/library" replace />} />
+                      <Route path="/" element={<DashboardRedirect />} />
+                      <Route path="/dashboard" element={<DashboardRedirect />} />
                       <Route path="/dashboard/:solutionId" element={<DashboardView />} />
                       <Route path="/library" element={<LibraryView />} />
                       <Route path="/reports" element={<ReportsView />} />
