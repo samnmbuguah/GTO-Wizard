@@ -23,3 +23,16 @@ class StrategyNode(models.Model):
         indexes = [
             models.Index(fields=['solution', 'path', 'hand']),
         ]
+class StrategyLock(models.Model):
+    user = models.ForeignKey('auth.User', related_name='strategy_locks', on_delete=models.CASCADE)
+    node = models.ForeignKey(StrategyNode, related_name='locks', on_delete=models.CASCADE)
+    locked_actions = models.JSONField() # {"fold": 0.0, "call": 1.0}
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'node')
+
+    def __str__(self):
+        return f"Lock on {self.node.hand} for {self.user.username}"

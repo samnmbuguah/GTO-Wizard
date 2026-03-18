@@ -1,6 +1,6 @@
 from rest_framework import viewsets, permissions
-from .models import Solution, StrategyNode
-from .serializers import SolutionSerializer, StrategyNodeSerializer
+from .models import Solution, StrategyNode, StrategyLock
+from .serializers import SolutionSerializer, StrategyNodeSerializer, StrategyLockSerializer
 
 class SolutionViewSet(viewsets.ModelViewSet):
     queryset = Solution.objects.all()
@@ -21,3 +21,13 @@ class StrategyNodeViewSet(viewsets.ModelViewSet):
         if path:
             queryset = queryset.filter(path=path)
         return queryset
+
+class StrategyLockViewSet(viewsets.ModelViewSet):
+    serializer_class = StrategyLockSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return StrategyLock.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)

@@ -5,6 +5,7 @@ export interface ActionFrequencies {
 }
 
 export interface StrategyNode {
+  id: number;
   path: string;
   hand: Hand;
   actions: ActionFrequencies;
