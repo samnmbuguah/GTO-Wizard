@@ -22,6 +22,13 @@ const LibraryView: React.FC = () => {
       const res = await fetch(url, {
         headers: { 'Authorization': `Token ${token}` }
       });
+      
+      if (res.status === 401) {
+        localStorage.removeItem('gto_token');
+        window.location.href = '/login';
+        return;
+      }
+
       const data = await res.json();
       if (Array.isArray(data)) {
         setSolutions(data);

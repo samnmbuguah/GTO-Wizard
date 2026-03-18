@@ -24,6 +24,13 @@ const ReportsView: React.FC = () => {
         const res = await fetch('http://213.199.50.129:8000/api/reports/aggregate/', {
           headers: { 'Authorization': `Token ${token}` }
         });
+
+        if (res.status === 401) {
+          localStorage.removeItem('gto_token');
+          window.location.href = '/login';
+          return;
+        }
+
         const result = await res.json();
         if (Array.isArray(result)) {
           // Normalize to percentages for display
@@ -77,7 +84,7 @@ const ReportsView: React.FC = () => {
             </h3>
           </div>
 
-          <div className="h-[400px] w-full">
+          <div className="h-[400px] min-h-[400px] w-full relative">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#94a3b830" />
