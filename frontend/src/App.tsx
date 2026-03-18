@@ -38,6 +38,7 @@ const generateMockData = (): StrategyNode[] => {
 function App() {
   const [path, setPath] = useState(['Preflop', 'BTN Open']);
   const [selectedHand, setSelectedHand] = useState<string | undefined>();
+  const [isLiveSolver, setIsLiveSolver] = useState(false);
   const mockNodes = useMemo(() => generateMockData(), []);
 
   return (
@@ -46,7 +47,13 @@ function App() {
         <h1 className="text-3xl font-extrabold bg-gradient-to-r from-poker-accent to-poker-red bg-clip-text text-transparent">
           Private GTO Wizard
         </h1>
-        <div className="flex gap-4">
+        <div className="flex gap-4 items-center">
+          <button 
+            onClick={() => setIsLiveSolver(!isLiveSolver)}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${isLiveSolver ? 'bg-poker-green text-poker-dark' : 'bg-slate-700 text-slate-300'}`}
+          >
+            {isLiveSolver ? 'LIVE SOLVER ACTIVE' : 'USE LIVE SOLVER'}
+          </button>
           <div className="px-4 py-2 bg-slate-800 rounded-lg border border-slate-700 text-xs font-mono">
             Rake: 5% | 100BB
           </div>
