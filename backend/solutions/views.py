@@ -7,6 +7,16 @@ class SolutionViewSet(viewsets.ModelViewSet):
     serializer_class = SolutionSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
+    def get_queryset(self):
+        queryset = Solution.objects.all()
+        rake = self.request.query_params.get('rake')
+        stack_depth = self.request.query_params.get('stack_depth')
+        if rake is not None:
+            queryset = queryset.filter(rake=rake)
+        if stack_depth is not None:
+            queryset = queryset.filter(stack_depth=stack_depth)
+        return queryset
+
 class StrategyNodeViewSet(viewsets.ModelViewSet):
     queryset = StrategyNode.objects.all()
     serializer_class = StrategyNodeSerializer
