@@ -53,7 +53,8 @@ const SidebarItem = ({ to, icon, label, collapsed, onClick }: SidebarItemProps) 
 
 export const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
   const [isDark, setIsDark] = useState(() => {
-    return localStorage.getItem('gto_theme') === 'dark';
+    const saved = localStorage.getItem('gto_theme');
+    return saved ? saved === 'dark' : true; // Default to dark (teal)
   });
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
