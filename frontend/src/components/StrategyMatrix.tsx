@@ -8,7 +8,8 @@ interface StrategyLock {
   locked_actions: any;
   is_active: boolean;
 }
-import { Maximize2, Minimize2, Lock, Unlock } from 'lucide-react';
+import { Maximize2, Minimize2, Lock, Unlock, Edit2, Check, X } from 'lucide-react';
+import { apiClient } from '../api/client';
 
 interface StrategyMatrixProps {
   nodes: StrategyNode[];
@@ -18,57 +19,77 @@ interface StrategyMatrixProps {
 const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) => {
   const [matrixSize, setMatrixSize] = useState(600);
   const [locks, setLocks] = useState<Record<string, StrategyLock>>({});
+  const [selectedHand, setSelectedHand] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedActions, setEditedActions] = useState<Record<string, number> | null>(null);
+
+  const handleFrequencyChange = (actionToChange: string, newValue: number) => {
+    if (!editedActions) return;
+    
+    const newActions = { ...editedActions };
+    const oldValue = newActions[actionToChange];
+    const diff = newValue - oldValue;
+    
+    newActions[actionToChange] = newValue;
+    
+    // Distribute diff among other actions
+    const otherActions = Object.keys(newActions).filter(a => a !== actionToChange);
+    const totalOther = otherActions.reduce((sum, a) => sum + newActions[a], 0);
+    
+    if (totalOther > 0) {
+      otherActions.forEach(a => {
+        newActions[a] = Math.max(0, newActions[a] - (diff * (newActions[a] / totalOther)));
+      });
+    } else if (otherActions.length > 0) {
+      // If others are 0, just split it equally
+      otherActions.forEach(a => {
+        newActions[a] = Math.max(0, (1 - newValue) / otherActions.length);
+      });
+    }
+    
+    // Final normalization to exactly 1.0
+    const finalSum = Object.values(newActions).reduce((a, b) => a + b, 0);
+    if (finalSum > 0) {
+      Object.keys(newActions).forEach(a => newActions[a] /= finalSum);
+    }
+    
+    setEditedActions(newActions);
+  };
 
   useEffect(() => {
     const fetchLocks = async () => {
-      const token = localStorage.getItem('gto_token');
-    try {
-      const res = await fetch('http://213.199.50.129:8000/api/locks/', {
-        headers: { 'Authorization': `Token ${token}` }
-      });
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        const lockMap: Record<string, StrategyLock> = {};
-        data.forEach(lock => {
-          const node = nodes.find(n => n.id === lock.node);
-          if (node) lockMap[node.hand] = lock;
-        });
-        setLocks(lockMap);
+      try {
+        const data = await apiClient.get<StrategyLock[]>('/locks/');
+        if (Array.isArray(data)) {
+          const lockMap: Record<string, StrategyLock> = {};
+          data.forEach(lock => {
+            const node = nodes.find(n => n.id === lock.node);
+            if (node) lockMap[node.hand] = lock;
+          });
+          setLocks(lockMap);
+        }
+      } catch (err) {
+        console.error('Failed to fetch locks:', err);
       }
-    } catch (err) {
-      console.error('Failed to fetch locks:', err);
-    }
-  };
+    };
     if (nodes.length > 0) fetchLocks();
   }, [nodes]);
 
-  const toggleLock = async (hand: string, node: StrategyNode) => {
-    const token = localStorage.getItem('gto_token');
+  const toggleLock = async (hand: string, node: StrategyNode, customActions?: any) => {
     const isLocked = !!locks[hand];
 
     try {
       if (isLocked) {
-        await fetch(`http://213.199.50.129:8000/api/locks/${locks[hand].id}/`, {
-          method: 'DELETE',
-          headers: { 'Authorization': `Token ${token}` }
-        });
+        await apiClient.delete(`/locks/${locks[hand].id}/`);
         const newLocks = { ...locks };
         delete newLocks[hand];
         setLocks(newLocks);
       } else {
-        const res = await fetch('http://213.199.50.129:8000/api/locks/', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Token ${token}`
-          },
-          body: JSON.stringify({
-            node: node.id,
-            locked_actions: node.actions,
-            is_active: true
-          }),
+        const newLock = await apiClient.post<StrategyLock>('/locks/', {
+          node: node.id,
+          locked_actions: customActions || node.actions,
+          is_active: true
         });
-        const newLock = await res.json();
         setLocks({ ...locks, [hand]: newLock });
       }
     } catch (err) {
@@ -76,7 +97,6 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
     }
   };
 
-  const [selectedHand, setSelectedHand] = useState<string | null>(null);
 
   const combos = nodes.map(node => {
     const isRaise = (node.actions['raise'] || 0) > 0.5;
@@ -84,9 +104,12 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
     const isDark = document.documentElement.classList.contains('dark');
     const foldColor = isDark ? '#1e293b' : '#f1f5f9';
     
+    const handIsLocked = !!locks[node.hand];
+    const baseColor = isRaise ? '#f43f5e' : isCall ? '#10b981' : foldColor;
+    
     return {
       combo: node.hand,
-      color: isRaise ? '#f43f5e' : isCall ? '#10b981' : foldColor,
+      color: handIsLocked ? '#d97706' : baseColor, // Gold color for locked
     };
   });
 
@@ -143,31 +166,83 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
 
         <div className="xl:col-span-4 space-y-6">
           {selectedHand && selectedNode ? (
-             <div className="p-6 bg-background/50 rounded-3xl border border-border animate-in">
+              <div className="p-6 bg-background/50 rounded-3xl border border-border animate-in ring-1 ring-indigo-500/10">
                 <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-2xl font-black">{selectedHand}</h3>
-                  <button 
-                    onClick={() => toggleLock(selectedHand, selectedNode)}
-                    className={`p-2 rounded-xl transition-all ${isLocked ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/30' : 'bg-muted/10 text-muted hover:bg-muted/20'}`}
-                    title={isLocked ? 'Unlock Strategy' : 'Lock Strategy'}
-                  >
-                    {isLocked ? <Lock className="w-5 h-5" /> : <Unlock className="w-5 h-5" />}
-                  </button>
+                  <div className="flex items-center gap-4">
+                    <h3 className="text-2xl font-black">{selectedHand}</h3>
+                    {!isEditing && (
+                      <button 
+                        onClick={() => {
+                          setIsEditing(true);
+                          setEditedActions({ ...selectedNode.actions });
+                        }}
+                        className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500/20 transition-all"
+                        title="Edit Strategy"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {isEditing ? (
+                      <>
+                        <button 
+                          onClick={() => {
+                            setIsEditing(false);
+                            setEditedActions(null);
+                          }}
+                          className="p-1.5 rounded-lg bg-rose-500/10 text-rose-500 hover:bg-rose-500/20"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                        <button 
+                          onClick={() => {
+                            toggleLock(selectedHand, selectedNode, editedActions);
+                            setIsEditing(false);
+                            setEditedActions(null);
+                          }}
+                          className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 shadow-lg shadow-emerald-500/10"
+                        >
+                          <Check className="w-5 h-5" />
+                        </button>
+                      </>
+                    ) : (
+                      <button 
+                        onClick={() => toggleLock(selectedHand, selectedNode)}
+                        className={`p-1.5 rounded-lg transition-all ${isLocked ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20' : 'bg-muted/10 text-muted hover:bg-muted/20'}`}
+                        title={isLocked ? 'Unlock Strategy' : 'Lock Strategy'}
+                      >
+                        {isLocked ? <Lock className="w-5 h-5" /> : <Unlock className="w-4 h-4" />}
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                <div className="space-y-3">
-                  {Object.entries(selectedNode.actions).map(([action, freq]) => (
-                    <div key={action} className="space-y-1">
-                      <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider">
-                        <span>{action}</span>
-                        <span>{(freq * 100).toFixed(1)}%</span>
+                <div className="space-y-5">
+                  {(editedActions || selectedNode.actions) && Object.entries(editedActions || selectedNode.actions).map(([action, freq]) => (
+                    <div key={action} className="space-y-2">
+                      <div className="flex justify-between text-[11px] font-bold uppercase tracking-wider">
+                        <span className={isEditing ? 'text-indigo-500' : 'text-muted'}>{action}</span>
+                        <span className="font-black">{(freq * 100).toFixed(1)}%</span>
                       </div>
-                      <div className="h-1.5 w-full bg-background rounded-full overflow-hidden">
-                        <div 
-                          className={`h-full rounded-full ${action === 'raise' ? 'bg-[#f43f5e]' : action === 'call' ? 'bg-[#10b981]' : 'bg-muted'}`}
-                          style={{ width: `${freq * 100}%` }}
-                        ></div>
-                      </div>
+                      {isEditing ? (
+                        <input 
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value={freq}
+                          onChange={(e) => handleFrequencyChange(action, parseFloat(e.target.value))}
+                          className={`w-full h-1.5 rounded-full appearance-none cursor-pointer bg-muted/20 accent-${action === 'raise' ? 'rose-500' : action === 'call' ? 'emerald-500' : 'slate-400'}`}
+                        />
+                      ) : (
+                        <div className="h-1.5 w-full bg-background rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full rounded-full ${action === 'raise' ? 'bg-[#f43f5e]' : action === 'call' ? 'bg-[#10b981]' : 'bg-muted'}`}
+                            style={{ width: `${(freq || 0) * 100}%` }}
+                          ></div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -196,6 +271,19 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
             <Lock className="w-3 h-3" />
             <span>{Object.keys(locks).length} Locked Strategies</span>
           </div>
+        )}
+        {Object.keys(locks).length > 0 && (
+          <button 
+            onClick={async () => {
+              const lockIds = Object.values(locks).map(l => l.id);
+              await Promise.all(lockIds.map(id => apiClient.delete(`/locks/${id}/`)));
+              setLocks({});
+            }}
+            className="flex items-center gap-2 px-3 py-1.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-500 text-xs font-bold hover:bg-rose-500/20 transition-all"
+          >
+            <X className="w-3 h-3" />
+            <span>Reset All Locks</span>
+          </button>
         )}
       </div>
       

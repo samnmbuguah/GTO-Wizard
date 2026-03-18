@@ -52,20 +52,23 @@ const SidebarItem = ({ to, icon, label, collapsed, onClick }: SidebarItemProps) 
 );
 
 export const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
-  const [isDark, setIsDark] = useState(false);
+  const [isDark, setIsDark] = useState(() => {
+    return localStorage.getItem('gto_theme') === 'dark';
+  });
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
   const { activeSolutionId } = useSolution();
 
   useEffect(() => {
-    if (isDark) document.documentElement.classList.add('dark');
-    else document.documentElement.classList.remove('dark');
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('gto_theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('gto_theme', 'light');
+    }
   }, [isDark]);
-
-  useEffect(() => {
-    setIsMobileMenuOpen(false);
-  }, [location]);
 
   return (
     <div className="flex h-screen bg-background text-foreground overflow-hidden font-sans transition-colors duration-300">

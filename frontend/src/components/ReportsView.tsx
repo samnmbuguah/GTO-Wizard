@@ -55,19 +55,19 @@ const ReportsView: React.FC = () => {
     <div className="space-y-8 animate-in max-w-7xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h2 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white">Aggregate Reports</h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm mt-1 font-medium">Strategy shifts across unique board textures</p>
+          <h2 className="text-3xl font-black tracking-tight text-foreground">Aggregate Reports</h2>
+          <p className="text-muted text-sm mt-1 font-medium">Strategy shifts across unique board textures</p>
         </div>
         
-        <div className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm">
+        <div className="flex items-center gap-2 px-6 py-3 bg-card border border-border rounded-2xl shadow-sm">
            < TrendingUp className="w-5 h-5 text-indigo-500" />
-           <span className="text-xs font-bold uppercase tracking-widest text-slate-900 dark:text-white">Trend Analysis Active</span>
+           <span className="text-xs font-bold uppercase tracking-widest text-foreground">Trend Analysis Active</span>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Main Chart */}
-        <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl shadow-slate-200/50 dark:shadow-none">
+        <div className="lg:col-span-2 bg-card p-8 rounded-[2.5rem] border border-border shadow-xl">
           <div className="flex items-center justify-between mb-10">
             <h3 className="text-lg font-black flex items-center gap-3">
               <PieChart className="w-6 h-6 text-indigo-500" />
@@ -125,18 +125,18 @@ const ReportsView: React.FC = () => {
               </div>
            </div>
 
-           <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
-              <h4 className="font-black mb-6 flex items-center gap-2">
+           <div className="bg-card p-8 rounded-[2.5rem] border border-border shadow-xl overflow-hidden">
+              <h4 className="font-black mb-6 flex items-center gap-2 text-foreground">
                  <TrendingUp className="w-5 h-5 text-indigo-500" />
                  Texture Rankings
               </h4>
               <div className="space-y-4">
                  {data.sort((a,b) => b.raise - a.raise).map(report => (
-                   <div key={report.texture} className="flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-2xl transition-colors group">
-                      <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{report.texture}</span>
+                   <div key={report.texture} className="flex items-center justify-between p-3 hover:bg-muted/10 rounded-2xl transition-colors group">
+                      <span className="text-sm font-bold text-foreground">{report.texture}</span>
                       <div className="flex items-center gap-3">
                          <span className="text-xs font-black text-indigo-500">{report.raise}% Raise</span>
-                         <div className="w-12 h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                         <div className="w-12 h-1 bg-muted/20 rounded-full overflow-hidden">
                             <div className="h-full bg-indigo-500 group-hover:bg-indigo-400 transition-all" style={{ width: `${report.raise}%` }}></div>
                          </div>
                       </div>
