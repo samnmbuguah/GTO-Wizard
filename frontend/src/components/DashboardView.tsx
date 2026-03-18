@@ -39,6 +39,14 @@ const DashboardView: React.FC = () => {
     fetchData();
   }, [solutionId]);
 
+  const categories = ['SRP', '3 BET', '4 BET', 'HU'];
+  const depths = ['100', '150', '200'];
+
+  // Use depths to prevent TypeScript error
+  useEffect(() => {
+    void depths;
+  }, [depths]);
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
@@ -47,14 +55,6 @@ const DashboardView: React.FC = () => {
       </div>
     );
   }
-
-  const categories = ['SRP', '3 BET', '4 BET', 'HU'];
-  const depths = ['100', '150', '200'];
-
-  // Use depths to prevent TypeScript error
-  useEffect(() => {
-    void depths;
-  }, [depths]);
   const scenarios = [
     'SB vs BB', 'BTN vs BB', 'CO vs BB', 'MP vs BB', 'UTG vs BB', 'MP vs BTN', 'UTG vs BTN'
   ];
