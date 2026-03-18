@@ -9,14 +9,18 @@ interface SolutionContextType {
 const SolutionContext = createContext<SolutionContextType | undefined>(undefined);
 
 export const SolutionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [activeSolutionId, setActiveSolutionId] = useState<string | null>(null);
+  const [activeSolutionId, setActiveSolutionId] = useState<string | null>(() => {
+    return localStorage.getItem('gto_active_solution');
+  });
   const location = useLocation();
 
   // Sync with URL if we are in a dashboard or study route
   useEffect(() => {
     const parts = location.pathname.split('/');
     if ((parts[1] === 'dashboard' || parts[1] === 'study') && parts[2]) {
-      setActiveSolutionId(parts[2]);
+      const id = parts[2];
+      setActiveSolutionId(id);
+      localStorage.setItem('gto_active_solution', id);
     }
   }, [location.pathname]);
 
