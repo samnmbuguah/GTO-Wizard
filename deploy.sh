@@ -96,10 +96,22 @@ run_tests() {
     if [ -d "backend" ]; then
         print_status "Running backend tests..."
         cd backend
-        if python manage.py test; then
-            print_success "Backend tests passed!"
+        
+        # Check if Python is available
+        if ! command -v python3 &> /dev/null && ! command -v python &> /dev/null; then
+            print_warning "Python not found in PATH, skipping backend tests..."
         else
-            print_warning "Backend tests failed, but continuing deployment..."
+            # Use python3 if available, otherwise python
+            PYTHON_CMD="python3"
+            if ! command -v python3 &> /dev/null; then
+                PYTHON_CMD="python"
+            fi
+            
+            if $PYTHON_CMD manage.py test; then
+                print_success "Backend tests passed!"
+            else
+                print_warning "Backend tests failed, but continuing deployment..."
+            fi
         fi
         cd ..
     fi
@@ -133,14 +145,20 @@ post_deployment_setup() {
     # Wait for backend to be ready
     check_health "Backend" "http://localhost:8000/api/"
     
+    # Determine Python command for Docker exec
+    PYTHON_CMD="python3"
+    if ! docker compose exec -T backend python3 --version &> /dev/null; then
+        PYTHON_CMD="python"
+    fi
+    
     # Run migrations
     print_status "Running database migrations..."
-    docker compose exec -T backend python manage.py makemigrations solutions core || true
-    docker compose exec -T backend python manage.py migrate
+    docker compose exec -T backend $PYTHON_CMD manage.py makemigrations solutions core || true
+    docker compose exec -T backend $PYTHON_CMD manage.py migrate
     
     # Seed data
     print_status "Seeding database..."
-    docker compose exec -T backend python seed.py || true
+    docker compose exec -T backend $PYTHON_CMD seed.py || true
     
     print_success "Post-deployment setup completed!"
 }
