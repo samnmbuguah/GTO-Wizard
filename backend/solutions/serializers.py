@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Solution, StrategyNode, StrategyLock
+from .models import Solution, StrategyNode, StrategyLock, StudySession
 
 class SolutionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -17,3 +17,9 @@ class StrategyLockSerializer(serializers.ModelSerializer):
     class Meta:
         model = StrategyLock
         fields = ['id', 'user', 'node', 'locked_actions', 'is_active', 'created_at', 'updated_at']
+
+class StudySessionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StudySession
+        fields = '__all__'
+        read_only_fields = ['user', 'created_at', 'updated_at']

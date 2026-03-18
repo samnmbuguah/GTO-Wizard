@@ -2,8 +2,8 @@ from rest_framework import viewsets, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.db.models import Avg, Sum
-from .models import Solution, StrategyNode, StrategyLock
-from .serializers import SolutionSerializer, StrategyNodeSerializer, StrategyLockSerializer
+from .models import Solution, StrategyNode, StrategyLock, StudySession
+from .serializers import SolutionSerializer, StrategyNodeSerializer, StrategyLockSerializer, StudySessionSerializer
 
 class AggregateReportView(APIView):
     def get(self, request):
@@ -109,3 +109,13 @@ class EquityDistributionView(APIView):
             return Response(data)
         except Solution.DoesNotExist:
             return Response({"error": "Solution not found"}, status=404)
+
+class StudySessionViewSet(viewsets.ModelViewSet):
+    serializer_class = StudySessionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return StudySession.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
