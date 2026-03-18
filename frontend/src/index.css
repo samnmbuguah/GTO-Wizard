@@ -1,15 +1,34 @@
 @import "tailwindcss";
 
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+}
+
 :root {
+  --background: #ffffff;
+  --foreground: #0f172a;
+  --card: #f8fafc;
+  --border: #e2e8f0;
+  --muted: #64748b;
+}
+
+.dark {
   --background: #0f172a;
   --foreground: #f8fafc;
+  --card: #1e293b;
+  --border: #334155;
+  --muted: #94a3b8;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  @apply bg-background text-foreground;
   -webkit-font-smoothing: antialiased;
   margin: 0;
+  transition: background-color 0.3s, color 0.3s;
 }
 
 @layer components {
@@ -38,9 +57,30 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-slate-800 rounded-full;
+  @apply bg-slate-400 rounded-full;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-slate-700;
+.dark ::-webkit-scrollbar-thumb {
+  @apply bg-slate-800;
+}
+
+/* Legibility & Matrix Polish */
+.custom-hand-matrix {
+  @apply select-none;
+}
+
+.custom-hand-matrix span {
+  @apply font-bold text-[11px] drop-shadow-sm transition-colors duration-200;
+  color: #ffffff; /* Default for dark cells */
+}
+
+/* Light mode specific label contrast */
+:root:not(.dark) .custom-hand-matrix span {
+  color: #1e293b;
+}
+
+/* Ensure light cell backgrounds (gray/fold) have dark text even in dark mode */
+.custom-hand-matrix [style*="background-color: rgb(226, 232, 240)"] span,
+.custom-hand-matrix [style*="background-color: #e2e8f0"] span {
+  color: #1e293b !important;
 }
