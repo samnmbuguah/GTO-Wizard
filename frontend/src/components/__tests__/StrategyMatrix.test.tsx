@@ -6,13 +6,15 @@ import StrategyMatrix from '../StrategyMatrix';
 describe('StrategyMatrix', () => {
   const mockNodes: StrategyNode[] = [
     {
+      id: 1,
       path: 'root',
       hand: 'AA',
-      actions: { 'raise': 1.0, 'call': 0.0, 'fold': 0.0 }, // Ensure all keys are defined if needed, or matches Index signature
+      actions: { 'raise': 1.0, 'call': 0.0, 'fold': 0.0 },
       ev: 10.5,
       equity: 0.85,
     },
     {
+      id: 2,
       path: 'root',
       hand: 'AKs',
       actions: { 'raise': 0.7, 'call': 0.3, 'fold': 0.0 },
@@ -20,6 +22,13 @@ describe('StrategyMatrix', () => {
       equity: 0.65,
     },
   ];
+
+  // Mock fetch for locks
+  global.fetch = vi.fn().mockImplementation(() =>
+    Promise.resolve({
+      json: () => Promise.resolve([]),
+    })
+  ) as any;
 
   it('renders correctly', () => {
     const { container } = render(<StrategyMatrix nodes={mockNodes} />);

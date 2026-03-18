@@ -5,6 +5,7 @@ import DashboardView from './components/DashboardView'
 import LibraryView from './components/LibraryView'
 import AccountView from './components/AccountView'
 import SettingsView from './components/SettingsView'
+import StudyView from './components/StudyView'
 import type { StrategyNode } from './types/poker'
 
 function App() {
@@ -54,7 +55,7 @@ function App() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardView nodes={nodes} onHandSelect={handleHandSelect} />} />
           <Route path="/library" element={<LibraryView />} />
-          <Route path="/study" element={<div className="p-8 text-center py-20 bg-card rounded-3xl border border-border shadow-xl"><h2 className="text-2xl font-bold">Study Mode</h2><p className="text-muted mt-2">Coming Soon: Interactive training and drills.</p></div>} />
+          <Route path="/study" element={<StudyView nodes={nodes} />} />
           <Route path="/account" element={<AccountView />} />
           <Route path="/settings" element={<SettingsView />} />
         </Routes>
