@@ -34,9 +34,19 @@ Run the included deployment script to build and start all services:
 ```
 
 The application will be available at:
-- **Frontend**: http://localhost:8089
-- **Backend API**: http://localhost:8000
-- **Admin Panel**: http://localhost:8000/admin/ (User: `admin`, Pass: `admin123`)
+- **Frontend Terminal**: [http://213.199.50.129:8089](http://213.199.50.129:8089)
+- **Backend API**: [http://213.199.50.129:8000](http://213.199.50.129:8000)
+- **Admin Panel**: [http://213.199.50.129:8000/admin/](http://213.199.50.129:8000/admin/)
+
+### 🔐 Authentication (Default Credentials)
+
+Access to the terminal and solver data is restricted. Use the following credentials to log in:
+
+- **Username**: `admin`
+- **Password**: `GtoMaster2026!`
+
+> [!IMPORTANT]
+> This is a public repository. It is highly recommended to change your password in the **Account Settings** after your first login into the production environment.
 
 ## 🧪 Testing
 

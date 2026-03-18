@@ -66,6 +66,7 @@ const LoginView: React.FC = () => {
               <input
                 type="text"
                 required
+                autoComplete="username"
                 className="block w-full pl-12 pr-4 py-4 bg-slate-100 dark:bg-slate-800/50 border-2 border-transparent focus:border-indigo-500 rounded-2xl transition-all outline-none text-slate-900 dark:text-white font-medium"
                 placeholder="admin"
                 value={username}
@@ -83,6 +84,7 @@ const LoginView: React.FC = () => {
               <input
                 type="password"
                 required
+                autoComplete="current-password"
                 className="block w-full pl-12 pr-4 py-4 bg-slate-100 dark:bg-slate-800/50 border-2 border-transparent focus:border-indigo-500 rounded-2xl transition-all outline-none text-slate-900 dark:text-white font-medium"
                 placeholder="••••••••"
                 value={password}

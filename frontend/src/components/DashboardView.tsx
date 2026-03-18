@@ -17,7 +17,9 @@ const DashboardView: React.FC<DashboardViewProps> = ({ nodes, onHandSelect }) =>
         </div>
         
         <div className="lg:col-span-4 space-y-6">
-          <EquityChart />
+          <div className="bg-card p-6 rounded-2xl border border-border shadow-xl h-[320px]">
+            <EquityChart />
+          </div>
 
           <div className="bg-card p-6 rounded-2xl border border-border shadow-xl">
             <h3 className="text-sm font-bold uppercase tracking-widest text-muted mb-4">Spot Details</h3>

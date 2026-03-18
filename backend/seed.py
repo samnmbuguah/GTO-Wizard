@@ -11,6 +11,11 @@ from solutions.models import Solution, StrategyNode
 if not User.objects.filter(username='admin').exists():
     User.objects.create_superuser('admin', 'admin@example.com', 'GtoMaster2026!')
     print("Superuser created with secure password.")
+else:
+    u = User.objects.get(username='admin')
+    u.set_password('GtoMaster2026!')
+    u.save()
+    print("Superuser password updated to secure value.")
 
 # Create a test solution
 solution, created = Solution.objects.get_or_create(
