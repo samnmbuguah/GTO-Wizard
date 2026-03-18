@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Database, Search, Percent, Layers, ChevronRight, Info } from 'lucide-react';
 import type { Solution } from '../types/poker';
+import { apiClient } from '../api/client';
 
 const LibraryView: React.FC = () => {
   const [solutions, setSolutions] = useState<Solution[]>([]);
@@ -10,29 +11,13 @@ const LibraryView: React.FC = () => {
   const [stackFilter, setStackFilter] = useState<string>('');
 
   const fetchSolutions = useCallback(async () => {
-    const token = localStorage.getItem('gto_token');
-    let url = 'http://213.199.50.129:8000/api/solutions/';
-    const params = new URLSearchParams();
-    if (rakeFilter) params.append('rake', rakeFilter);
-    if (stackFilter) params.append('stack_depth', stackFilter);
-    if (params.toString()) url += `?${params.toString()}`;
-
     try {
       setLoading(true);
-      const res = await fetch(url, {
-        headers: { 'Authorization': `Token ${token}` }
+      const data = await apiClient.get<Solution[]>('/solutions/', {
+        rake: rakeFilter,
+        stack_depth: stackFilter
       });
-      
-      if (res.status === 401) {
-        localStorage.removeItem('gto_token');
-        window.location.href = '/login';
-        return;
-      }
-
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setSolutions(data);
-      }
+      setSolutions(data);
     } catch (err) {
       console.error('Failed to fetch solutions:', err);
     } finally {

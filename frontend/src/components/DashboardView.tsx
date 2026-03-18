@@ -37,9 +37,15 @@ const DashboardView: React.FC<DashboardViewProps> = ({ nodes, onHandSelect }) =>
                 <span className="text-xs font-semibold">5% (CAP 3bb)</span>
               </div>
             </div>
-            <button className="w-full mt-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-95">
-              Change Scenario
-            </button>
+            {localStorage.getItem('gto_user') === 'admin' ? (
+              <div className="w-full mt-6 py-3 bg-emerald-500/10 text-emerald-500 rounded-xl text-xs font-bold text-center border border-emerald-500/20">
+                Premium Access
+              </div>
+            ) : (
+              <button className="w-full mt-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-95">
+                Change Scenario
+              </button>
+            )}
           </div>
 
           <div className="bg-gradient-to-br from-indigo-600 to-violet-700 p-6 rounded-2xl text-white shadow-xl">

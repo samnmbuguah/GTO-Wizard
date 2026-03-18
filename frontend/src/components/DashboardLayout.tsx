@@ -166,9 +166,15 @@ export const DashboardLayout = ({ children }: { children: React.ReactNode }) => 
             <span className="px-2 py-0.5 text-[9px] font-black bg-indigo-500/10 text-indigo-500 border border-indigo-500/10 rounded uppercase">Live Solver</span>
           </div>
           <div className="flex items-center gap-4">
-            <button className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-all shadow-lg shadow-indigo-600/20">
-              Upgrade Plan
-            </button>
+            {localStorage.getItem('gto_user') === 'admin' ? (
+              <span className="px-4 py-1.5 bg-emerald-500/10 text-emerald-500 text-xs font-bold rounded-lg border border-emerald-500/20">
+                Premium Active
+              </span>
+            ) : (
+              <button className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-all shadow-lg shadow-indigo-600/20">
+                Upgrade Plan
+              </button>
+            )}
           </div>
         </header>
 

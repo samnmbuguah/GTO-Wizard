@@ -34,10 +34,12 @@ const LoadingSpinner = () => (
   </div>
 );
 
+import { apiClient } from './api/client'
+
 function App() {
   const [nodes, setNodes] = useState<StrategyNode[]>([])
   const [loading, setLoading] = useState(true)
-  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('gto_token'))
+  const [isAuthenticated] = useState(!!localStorage.getItem('gto_token'))
 
   const fetchData = useCallback(async () => {
     const token = localStorage.getItem('gto_token');
@@ -48,28 +50,19 @@ function App() {
 
     try {
       setLoading(true)
-      const solRes = await fetch('http://213.199.50.129:8000/api/solutions/', {
-        headers: { 'Authorization': `Token ${token}` }
-      })
+      const solutions = await apiClient.get<any[]>('/solutions/')
       
-      if (solRes.status === 401) {
-        localStorage.removeItem('gto_token');
-        setIsAuthenticated(false);
-        setLoading(false);
-        return;
-      }
-
-      const solutions = await solRes.json()
       if (Array.isArray(solutions) && solutions.length > 0) {
         const firstSol = solutions[0]
-        const nodeRes = await fetch(`http://213.199.50.129:8000/api/nodes/?solution_id=${firstSol.id}&path=root`, {
-          headers: { 'Authorization': `Token ${token}` }
+        const nodesData = await apiClient.get<StrategyNode[]>(`/nodes/`, {
+          solution_id: firstSol.id,
+          path: 'root'
         })
-        const nodesData = await nodeRes.json()
         setNodes(nodesData)
       }
     } catch (error) {
       console.error('Failed to fetch data:', error)
+      // If 401, apiClient already handles token removal and redirect
     } finally {
       setLoading(false)
     }

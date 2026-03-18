@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { TrendingUp, PieChart, Layers, Info } from 'lucide-react';
 
+import { apiClient } from '../api/client';
+
 interface ReportData {
   texture: string;
   avg_fold: number;
@@ -19,19 +21,8 @@ const ReportsView: React.FC = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      const token = localStorage.getItem('gto_token');
       try {
-        const res = await fetch('http://213.199.50.129:8000/api/reports/aggregate/', {
-          headers: { 'Authorization': `Token ${token}` }
-        });
-
-        if (res.status === 401) {
-          localStorage.removeItem('gto_token');
-          window.location.href = '/login';
-          return;
-        }
-
-        const result = await res.json();
+        const result = await apiClient.get<ReportData[]>('/reports/aggregate/');
         if (Array.isArray(result)) {
           // Normalize to percentages for display
           const normalized = result.map(r => ({

@@ -71,6 +71,7 @@ describe('LoginView Component', () => {
     (global.fetch as any).mockResolvedValueOnce({
       ok: false,
       status: 400,
+      json: async () => ({ non_field_errors: ['Invalid credentials. Please try again.'] }),
     });
 
     renderLogin();
