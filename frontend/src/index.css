@@ -29,7 +29,11 @@ body {
   color: var(--foreground);
   -webkit-font-smoothing: antialiased;
   margin: 0;
-  transition: background-color 0.3s, color 0.3s;
+  transition: background-color 0s, color 0.3s;
+}
+
+.dark body {
+  background: #000000;
 }
 
 /* Custom Animations */

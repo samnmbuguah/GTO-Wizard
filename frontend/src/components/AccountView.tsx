@@ -18,9 +18,12 @@ const AccountView: React.FC = () => {
               </div>
               <div>
                 <h3 className="font-bold text-lg">Samuel Mbugua</h3>
-                <p className="text-sm text-muted">Premium Member since Oct 2025</p>
+                <p className="text-sm text-gray-600">Premium Member since Oct 2025</p>
               </div>
-              <button className="ml-auto px-4 py-2 border border-border rounded-lg text-xs font-bold hover:bg-background transition-colors hidden sm:block">
+              <button 
+                onClick={() => alert('Edit Profile feature coming soon in the next update!')}
+                className="ml-auto px-4 py-2 border border-border rounded-lg text-xs font-bold hover:bg-background transition-colors hidden sm:block"
+              >
                 Edit Profile
               </button>
             </div>

@@ -81,7 +81,7 @@ export const DashboardLayout = ({ children }: { children: React.ReactNode }) => 
       )}
 
       <aside className={`
-        fixed lg:relative z-50 h-full border-r border-border bg-card/60 lg:bg-card/40 backdrop-blur-xl flex flex-col transition-all duration-300
+        fixed lg:relative z-50 h-full border-r border-border bg-card lg:bg-card flex flex-col transition-all duration-300
         ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         ${isCollapsed ? 'w-20' : 'w-64'}
       `}>
@@ -186,14 +186,17 @@ export const DashboardLayout = ({ children }: { children: React.ReactNode }) => 
                 Premium Active
               </span>
             ) : (
-              <button className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-all shadow-lg shadow-indigo-600/20">
+              <button 
+                onClick={() => alert('Upgrade flow will be integrated with your chosen payment gateway.')}
+                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-all shadow-lg shadow-indigo-600/20"
+              >
                 Upgrade Plan
               </button>
             )}
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto relative p-4 md:p-6 lg:p-10 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.03),transparent)]">
+        <main className="flex-1 overflow-y-auto relative p-4 md:p-6 lg:p-10 bg-background">
           {children}
         </main>
       </div>
