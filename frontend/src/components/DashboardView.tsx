@@ -1,24 +1,55 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import StrategyMatrix from './StrategyMatrix';
 import EquityChart from './EquityChart';
-import type { StrategyNode } from '../types/poker';
+import { apiClient } from '../api/client';
+import type { StrategyNode, Solution } from '../types/poker';
 
-interface DashboardViewProps {
-  nodes: StrategyNode[];
-  onHandSelect: (hand: string) => void;
-}
+const DashboardView: React.FC = () => {
+  const { solutionId } = useParams<{ solutionId: string }>();
+  const navigate = useNavigate();
+  const [nodes, setNodes] = useState<StrategyNode[]>([]);
+  const [solution, setSolution] = useState<Solution | null>(null);
+  const [loading, setLoading] = useState(true);
 
-const DashboardView: React.FC<DashboardViewProps> = ({ nodes, onHandSelect }) => {
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!solutionId) return;
+      try {
+        setLoading(true);
+        const [solData, nodesData] = await Promise.all([
+          apiClient.get<Solution>(`/solutions/${solutionId}/`),
+          apiClient.get<StrategyNode[]>('/nodes/', { solution_id: solutionId, path: 'root' })
+        ]);
+        setSolution(solData);
+        setNodes(nodesData);
+      } catch (err) {
+        console.error('Failed to fetch dashboard data:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [solutionId]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
+        <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-indigo-500 font-bold animate-pulse">Loading Solution Data...</p>
+      </div>
+    );
+  }
   return (
     <div className="space-y-8 animate-in">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-8">
-          <StrategyMatrix nodes={nodes} onHandSelect={onHandSelect} />
+          <StrategyMatrix nodes={nodes} onHandSelect={(hand) => console.log('Selected:', hand)} />
         </div>
         
         <div className="lg:col-span-4 space-y-6">
           <div className="bg-card p-6 rounded-2xl border border-border shadow-xl h-[320px]">
-            <EquityChart />
+            <EquityChart solutionId={solutionId} />
           </div>
 
           <div className="bg-card p-6 rounded-2xl border border-border shadow-xl">
@@ -26,15 +57,15 @@ const DashboardView: React.FC<DashboardViewProps> = ({ nodes, onHandSelect }) =>
             <div className="space-y-4">
               <div className="flex justify-between items-center py-2 border-b border-border/50">
                 <span className="text-xs text-muted">Scenario</span>
-                <span className="text-xs font-semibold">SB Open vs BB</span>
+                <span className="text-xs font-semibold">{solution?.name || 'Loading...'}</span>
               </div>
               <div className="flex justify-between items-center py-2 border-b border-border/50">
                 <span className="text-xs text-muted">Stack Depth</span>
-                <span className="text-xs font-semibold">100bb</span>
+                <span className="text-xs font-semibold">{solution?.stack_depth}bb</span>
               </div>
               <div className="flex justify-between items-center py-2">
                 <span className="text-xs text-muted">Rake</span>
-                <span className="text-xs font-semibold">5% (CAP 3bb)</span>
+                <span className="text-xs font-semibold">{((solution?.rake || 0) * 100).toFixed(1)}%</span>
               </div>
             </div>
             {localStorage.getItem('gto_user') === 'admin' ? (
@@ -42,7 +73,10 @@ const DashboardView: React.FC<DashboardViewProps> = ({ nodes, onHandSelect }) =>
                 Premium Access
               </div>
             ) : (
-              <button className="w-full mt-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-95">
+              <button 
+                onClick={() => navigate('/library')}
+                className="w-full mt-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
+              >
                 Change Scenario
               </button>
             )}

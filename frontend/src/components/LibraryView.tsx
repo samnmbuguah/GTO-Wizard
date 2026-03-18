@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Database, Search, Percent, Layers, ChevronRight, Info } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import type { Solution } from '../types/poker';
 import { apiClient } from '../api/client';
 
 const LibraryView: React.FC = () => {
+  const navigate = useNavigate();
   const [solutions, setSolutions] = useState<Solution[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -100,7 +102,11 @@ const LibraryView: React.FC = () => {
           ))
         ) : filteredSolutions.length > 0 ? (
           filteredSolutions.map((spot) => (
-            <div key={spot.id} className="group bg-card p-8 rounded-[2.5rem] border border-border hover:border-indigo-500 transition-all shadow-xl hover:shadow-2xl hover:shadow-indigo-500/10 hover:-translate-y-1 cursor-pointer relative overflow-hidden">
+            <div 
+              key={spot.id} 
+              onClick={() => navigate(`/dashboard/${spot.id}`)}
+              className="group bg-card p-8 rounded-[2.5rem] border border-border hover:border-indigo-500 transition-all shadow-xl hover:shadow-2xl hover:shadow-indigo-500/10 hover:-translate-y-1 cursor-pointer relative overflow-hidden"
+            >
               <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-indigo-500/10 transition-colors"></div>
               
               <div className="w-14 h-14 bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-500 mb-6 group-hover:bg-indigo-500 group-hover:text-white transition-all shadow-sm">

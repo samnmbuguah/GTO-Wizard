@@ -79,3 +79,33 @@ class StrategyLockViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+class EquityDistributionView(APIView):
+    def get(self, request, pk):
+        try:
+            solution = Solution.objects.get(pk=pk)
+            texture = solution.flop_texture
+            
+            # Base distribution (Simulation)
+            # In a real app, this would be computed by a solver engine or pre-calculated
+            if texture in ['High', 'Paired']:
+                # Hero (SB) has more range advantage
+                hero_data = [2, 5, 8, 12, 18, 25, 35, 45, 60, 80]
+                villain_data = [1, 3, 6, 10, 15, 20, 30, 40, 50, 65]
+            elif texture in ['Low', 'Monotone']:
+                # Villain (BB) has more advantage on dynamic/low boards
+                hero_data = [1, 3, 5, 10, 15, 22, 30, 40, 55, 75]
+                villain_data = [2, 6, 12, 18, 25, 35, 45, 60, 75, 90]
+            else:
+                hero_data = [2, 5, 10, 15, 20, 30, 40, 55, 70, 85]
+                villain_data = [2, 5, 12, 18, 25, 35, 48, 62, 75, 88]
+                
+            labels = ["0-10%", "10-20%", "20-30%", "30-40%", "40-50%", "50-60%", "60-70%", "70-80%", "80-90%", "90-100%"]
+            
+            data = [
+                {"bin": label, "hero": h, "villain": v}
+                for label, h, v in zip(labels, hero_data, villain_data)
+            ]
+            
+            return Response(data)
+        except Solution.DoesNotExist:
+            return Response({"error": "Solution not found"}, status=404)

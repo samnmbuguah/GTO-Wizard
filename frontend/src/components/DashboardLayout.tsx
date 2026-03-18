@@ -16,6 +16,7 @@ import {
   Sun,
   Moon
 } from 'lucide-react';
+import { useSolution } from '../contexts/SolutionContext';
 
 interface SidebarItemProps {
   to: string;
@@ -55,6 +56,7 @@ export const DashboardLayout = ({ children }: { children: React.ReactNode }) => 
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
+  const { activeSolutionId } = useSolution();
 
   useEffect(() => {
     if (isDark) document.documentElement.classList.add('dark');
@@ -102,10 +104,20 @@ export const DashboardLayout = ({ children }: { children: React.ReactNode }) => 
         </div>
 
         <nav className="flex-1 overflow-y-auto py-4 space-y-1">
-          <SidebarItem to="/dashboard" icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard" collapsed={isCollapsed} />
+          <SidebarItem 
+            to={activeSolutionId ? `/dashboard/${activeSolutionId}` : '/library'} 
+            icon={<LayoutDashboard className="w-5 h-5" />} 
+            label="Dashboard" 
+            collapsed={isCollapsed} 
+          />
           <SidebarItem to="/library" icon={<Search className="w-5 h-5" />} label="Library" collapsed={isCollapsed} />
           <SidebarItem to="/reports" icon={<BarChart className="w-5 h-5" />} label="Reports" collapsed={isCollapsed} />
-          <SidebarItem to="/study" icon={<TrendingUp className="w-5 h-5" />} label="Trainer" collapsed={isCollapsed} />
+          <SidebarItem 
+            to={activeSolutionId ? `/study/${activeSolutionId}` : '/library'} 
+            icon={<TrendingUp className="w-5 h-5" />} 
+            label="Trainer" 
+            collapsed={isCollapsed} 
+          />
           
           <div className={`mt-8 mb-2 px-6 text-[10px] font-bold text-muted uppercase tracking-widest ${isCollapsed ? 'hidden' : ''}`}>Theme</div>
           <SidebarItem 

@@ -1,17 +1,39 @@
 import React, { useState, useEffect } from 'react';
-import type { StrategyNode } from '../types/poker';
+import { useParams } from 'react-router-dom';
+import type { StrategyNode, Solution } from '../types/poker';
 import HandVisualizer from './HandVisualizer';
+import { apiClient } from '../api/client';
 import { Trophy, Flame, ChevronRight, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
 
-interface StudyViewProps {
-  nodes: StrategyNode[];
-}
-
-const StudyView: React.FC<StudyViewProps> = ({ nodes }) => {
+const StudyView: React.FC = () => {
+  const { solutionId } = useParams<{ solutionId: string }>();
+  const [nodes, setNodes] = useState<StrategyNode[]>([]);
+  const [solution, setSolution] = useState<Solution | null>(null);
+  const [loading, setLoading] = useState(true);
   const [currentHand, setCurrentHand] = useState<StrategyNode | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'correct' | 'wrong' | 'marginal', message: string } | null>(null);
   const [score, setScore] = useState({ correct: 0, total: 0 });
   const [streak, setStreak] = useState(0);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!solutionId) return;
+      try {
+        setLoading(true);
+        const [solData, nodesData] = await Promise.all([
+          apiClient.get<Solution>(`/solutions/${solutionId}/`),
+          apiClient.get<StrategyNode[]>('/nodes/', { solution_id: solutionId, path: 'root' })
+        ]);
+        setSolution(solData);
+        setNodes(nodesData);
+      } catch (err) {
+        console.error('Failed to fetch study data:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [solutionId]);
 
   const dealNewHand = () => {
     if (nodes.length === 0) return;
@@ -21,7 +43,9 @@ const StudyView: React.FC<StudyViewProps> = ({ nodes }) => {
   };
 
   useEffect(() => {
-    dealNewHand();
+    if (nodes.length > 0) {
+      dealNewHand();
+    }
   }, [nodes]);
 
   const handleAction = (action: string) => {
@@ -51,6 +75,15 @@ const StudyView: React.FC<StudyViewProps> = ({ nodes }) => {
     setScore(s => ({ ...s, total: s.total + 1 }));
     setFeedback({ type, message });
   };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
+        <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-indigo-500 font-bold animate-pulse">Prepping Trainer Session...</p>
+      </div>
+    );
+  }
 
   if (!currentHand) return null;
 
@@ -84,9 +117,9 @@ const StudyView: React.FC<StudyViewProps> = ({ nodes }) => {
         {/* Scenario Info */}
         <div className="text-center space-y-2 mb-12">
           <p className="text-[10px] uppercase font-bold text-indigo-500 tracking-[0.2em]">Current Spot</p>
-          <h2 className="text-3xl font-black tracking-tight">SB Open vs BB</h2>
+          <h2 className="text-3xl font-black tracking-tight">{solution?.name || 'SB Open vs BB'}</h2>
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-muted/10 rounded-full text-[10px] font-bold text-muted uppercase">
-            <span>100bb Effective</span>
+            <span>{solution?.stack_depth}bb Effective</span>
           </div>
         </div>
 

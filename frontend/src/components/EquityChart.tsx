@@ -1,4 +1,4 @@
-import React from 'react';
+import { useState, useEffect } from 'react';
 import { 
   AreaChart, 
   Area, 
@@ -8,22 +8,39 @@ import {
   Tooltip, 
   ResponsiveContainer 
 } from 'recharts';
+import { apiClient } from '../api/client';
 
-const data = [
-  { equity: 0, frequency: 5 },
-  { equity: 10, frequency: 8 },
-  { equity: 20, frequency: 15 },
-  { equity: 30, frequency: 45 },
-  { equity: 40, frequency: 60 },
-  { equity: 50, frequency: 55 },
-  { equity: 60, frequency: 30 },
-  { equity: 70, frequency: 12 },
-  { equity: 80, frequency: 8 },
-  { equity: 90, frequency: 4 },
-  { equity: 100, frequency: 2 },
-];
+interface EquityChartProps {
+  solutionId?: string;
+}
 
-const EquityChart: React.FC = () => {
+const EquityChart: React.FC<EquityChartProps> = ({ solutionId }) => {
+  const [chartData, setChartData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchEquity = async () => {
+      if (!solutionId) return;
+      try {
+        setLoading(true);
+        const data = await apiClient.get<any[]>(`/solutions/${solutionId}/equity/`);
+        setChartData(data);
+      } catch (err) {
+        console.error('Failed to fetch equity:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchEquity();
+  }, [solutionId]);
+
+  if (loading) {
+    return (
+      <div className="h-[350px] flex items-center justify-center bg-card rounded-3xl border border-border">
+         <div className="w-8 h-8 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
   return (
     <div className="bg-card p-6 rounded-3xl border border-border shadow-xl backdrop-blur-sm animate-in">
       <div className="flex items-center gap-3 mb-6 pb-4 border-b border-border">
@@ -34,21 +51,24 @@ const EquityChart: React.FC = () => {
       <div className="h-[250px] min-h-[250px] w-full relative">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
-            data={data}
+            data={chartData}
             margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
           >
             <defs>
-              <linearGradient id="colorEquity" x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id="colorHero" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
                 <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+              </linearGradient>
+              <linearGradient id="colorVillain" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#ec4899" stopOpacity={0.2}/>
+                <stop offset="95%" stopColor="#ec4899" stopOpacity={0}/>
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.1} />
             <XAxis 
-              dataKey="equity" 
+              dataKey="bin" 
               stroke="#94a3b8" 
               fontSize={10} 
-              tickFormatter={(val) => `${val}%`}
               axisLine={false}
               tickLine={false}
             />

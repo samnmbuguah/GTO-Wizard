@@ -43,3 +43,15 @@ class StrategyLock(models.Model):
 
     def __str__(self):
         return f"Lock on {self.node.hand} for {self.user.username}"
+class StudySession(models.Model):
+    user = models.ForeignKey('auth.User', related_name='study_sessions', on_delete=models.CASCADE)
+    solution = models.ForeignKey(Solution, related_name='study_sessions', on_delete=models.CASCADE)
+    correct_hands = models.FloatField(default=0)
+    total_hands = models.IntegerField(default=0)
+    streak = models.IntegerField(default=0)
+    best_streak = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Session for {self.user.username} - {self.solution.name} ({self.created_at.date()})"
