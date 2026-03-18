@@ -4,56 +4,76 @@ import { RotateCcw } from 'lucide-react';
 interface BoardSelectorProps {
   board?: string[]; // e.g. ['6h', '6c', 'Ts']
   onReset?: () => void;
+  onCardToggle?: (card: string) => void;
 }
 
-const BoardSelector: React.FC<BoardSelectorProps> = ({ board = ['6h', '6c', 'Ts'], onReset }) => {
-  const getSuitColor = (suit: string) => {
-    switch (suit) {
-      case 'h': return 'text-rose-500';
-      case 'd': return 'text-blue-500';
-      case 'c': return 'text-emerald-500';
-      case 's': return 'text-white';
-      default: return 'text-muted';
-    }
-  };
-
-  const getSuitSymbol = (suit: string) => {
-    switch (suit) {
-      case 'h': return '♥';
-      case 'd': return '♦';
-      case 'c': return '♣';
-      case 's': return '♠';
-      default: return '';
-    }
-  };
+const BoardSelector: React.FC<BoardSelectorProps> = ({ board = [], onReset, onCardToggle }) => {
+  const suits = [
+    { id: 'h', symbol: '♥', color: 'text-poker-red', bg: 'bg-poker-red/20' },
+    { id: 'd', symbol: '♦', color: 'text-poker-red', bg: 'bg-poker-red/20' },
+    { id: 's', symbol: '♠', color: 'text-poker-light', bg: 'bg-poker-green/20' },
+    { id: 'c', symbol: '♣', color: 'text-poker-light', bg: 'bg-poker-green/20' },
+  ];
+  
+  const ranks = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2'];
 
   return (
-    <div className="flex items-center gap-4">
-      <div className="flex items-center gap-1 bg-black/40 p-2 rounded-xl border border-white/5 shadow-inner">
-        {board.map((card, idx) => {
-          const rank = card.slice(0, -1);
-          const suit = card.slice(-1);
-          return (
-            <div 
-              key={idx}
-              className="w-12 h-16 bg-zinc-900 border border-white/10 rounded-lg flex flex-col items-center justify-center relative shadow-lg group hover:scale-105 transition-transform cursor-pointer"
-            >
-              <span className="text-sm font-black text-white">{rank}</span>
-              <span className={`text-lg leading-none ${getSuitColor(suit)}`}>
-                {getSuitSymbol(suit)}
-              </span>
-            </div>
-          );
-        })}
+    <div className="space-y-4">
+      {/* Selected Cards Display */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h3 className="text-xs font-black uppercase tracking-wider text-poker-light">Board Selection</h3>
+          <div className="flex gap-1">
+            {board.map((card) => {
+              const s = card.slice(-1);
+              const r = card.slice(0, -1);
+              const suitObj = suits.find(obj => obj.id === s);
+              return (
+                <div key={card} className="px-2 py-1 bg-poker-gray border border-poker-gray rounded flex items-center gap-1.5 min-w-[32px] justify-center">
+                  <span className="text-xs font-bold text-white">{r}</span>
+                  <span className={`text-xs ${suitObj?.color}`}>{suitObj?.symbol}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <button 
+          onClick={onReset}
+          className="p-2 hover:bg-poker-gray text-poker-light hover:text-white rounded-lg transition-all"
+          title="Clear Board"
+        >
+          <RotateCcw className="w-4 h-4" />
+        </button>
       </div>
-      
-      <button 
-        onClick={onReset}
-        className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-[10px] font-black uppercase tracking-widest text-muted hover:text-white rounded-xl border border-white/5 transition-all flex items-center gap-2"
-      >
-        <RotateCcw className="w-3 h-3" />
-        <span>Reset</span>
-      </button>
+
+      {/* Card Grid */}
+      <div className="grid grid-cols-13 gap-px bg-poker-gray p-2 rounded">
+        {suits.map((suit) => (
+          ranks.map((rank) => {
+            const card = `${rank}${suit.id}`;
+            const isSelected = board.includes(card);
+            
+            return (
+              <button
+                key={card}
+                onClick={() => onCardToggle && onCardToggle(card)}
+                className={`
+                  aspect-square flex flex-col items-center justify-center transition-all duration-150 text-xs font-black
+                  ${isSelected 
+                    ? `bg-poker-accent text-white scale-105 z-10` 
+                    : suit.id === 'h' || suit.id === 'd'
+                    ? `bg-poker-red/30 text-poker-red hover:bg-poker-red/50`
+                    : `bg-poker-green/30 text-poker-light hover:bg-poker-green/50`
+                  }
+                `}
+              >
+                <span className="text-xs font-bold leading-none">{rank}</span>
+                <span className="text-lg leading-none mt-0.5">{suit.symbol}</span>
+              </button>
+            )
+          })
+        ))}
+      </div>
     </div>
   );
 };

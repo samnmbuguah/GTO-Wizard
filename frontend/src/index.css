@@ -6,6 +6,7 @@
   --color-card: var(--card);
   --color-border: var(--border);
   --color-muted: var(--muted);
+  --grid-template-columns-13: repeat(13, minmax(0, 1fr));
 }
 
 :root {
@@ -70,38 +71,163 @@ body {
 }
 
 .custom-hand-matrix span {
-  font-weight: 700;
-  font-size: 11px;
-  transition: color 0.2s;
-  color: #ffffff; /* Default for dark mode matrix */
-  text-shadow: 0 1px 2px rgba(0,0,0,1);
+  font-weight: 900;
+  font-size: 10px;
+  letter-spacing: -0.02em;
+  transition: all 0.2s;
+  color: #ffffff;
+  text-shadow: 0 0 3px rgba(0,0,0,0.8), 0 1px 1px rgba(0,0,0,1);
 }
 
 /* Light mode specific label contrast */
 :root:not(.dark) .custom-hand-matrix span {
-  color: #000000;
-  text-shadow: 0 0 4px #ffffff;
+  color: #0f172a;
+  text-shadow: 0 0 4px rgba(255,255,255,0.8);
 }
 
-/* Handle light cell backgrounds in dark mode */
-.dark .custom-hand-matrix [style*="background-color: rgb(226, 232, 240)"] span,
-.dark .custom-hand-matrix [style*="background-color: #e2e8f0"] span,
-.dark .custom-hand-matrix [style*="background-color: #f1f5f9"] span {
+/* Smart contrast for light/pale cells in ANY mode */
+.custom-hand-matrix [style*="background-color: #f1f5f9"] span,
+.custom-hand-matrix [style*="background-color: #e2e8f0"] span,
+.custom-hand-matrix [style*="background-color: rgb(226, 232, 240)"] span,
+.custom-hand-matrix [style*="background-color: rgb(241, 245, 249)"] span,
+.custom-hand-matrix [style*="background-color: #ccfbf1"] span, /* Cyan-50 */
+.custom-hand-matrix [style*="background-color: #e0f2fe"] span, /* Sky-50 */
+.custom-hand-matrix [style*="background-color: #f0f9ff"] span { /* Light blue */
   color: #0f172a !important;
   text-shadow: none !important;
+  font-weight: 800 !important;
 }
 
-/* Ensure labels on the new dark fold color (#1e293b) remain white */
-.dark .custom-hand-matrix [style*="background-color: #1e293b"] span {
+/* Standardize ACTION colors visibility */
+.custom-hand-matrix [style*="background-color: #f43f5e"] span, /* Raise */
+.custom-hand-matrix [style*="background-color: #10b981"] span, /* Call */
+.custom-hand-matrix [style*="background-color: #1e293b"] span { /* Dark Fold */
   color: #ffffff !important;
-  text-shadow: 0 1px 2px rgba(0,0,0,1) !important;
+  text-shadow: 0 0 2px rgba(0,0,0,0.5), 0 1px 1px rgba(0,0,0,0.8) !important;
 }
 
-/* Matrix cell borders */
-.HandMatrix button {
-  border: 1px solid rgba(0, 0, 0, 0.05) !important;
+/* Strategy Container Layout */
+.strategy-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--background);
 }
 
-.dark .HandMatrix button {
-  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+.strategy-header {
+  flex-shrink: 0;
+  padding: 1rem;
+}
+
+.strategy-content {
+  flex: 1;
+  display: flex;
+  gap: 1rem;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.range-visualizer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.solutionGrid {
+  display: grid;
+  grid-template-columns: repeat(13, 1fr);
+  gap: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.solutionGrid-row {
+  display: contents;
+}
+
+.solutionGrid-row-handButton {
+  display: contents;
+}
+
+.highLevelHandSolution {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: transparent;
+  color: inherit;
+  font-size: 0.75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  aspect-ratio: 1;
+}
+
+.highLevelHandSolution:hover {
+  transform: scale(1.05);
+  z-index: 10;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+}
+
+.strategy-details {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.strategy-footer {
+  flex-shrink: 0;
+  padding: 1rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.strategy-settingsButton {
+  padding: 0.5rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.strategy-settingsButton:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.strategy-settingsButtonIcon {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* Dark mode adjustments */
+.dark .highLevelHandSolution {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark .strategy-settingsButton {
+  background: rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+  .strategy-content {
+    flex-direction: column;
+  }
+  
+  .strategy-details {
+    width: 100%;
+    flex-direction: row;
+    overflow-x: auto;
+  }
 }

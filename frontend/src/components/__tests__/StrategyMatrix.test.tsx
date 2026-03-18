@@ -47,10 +47,9 @@ describe('StrategyMatrix', () => {
 
   it('renders correctly', () => {
     const { container } = render(<StrategyMatrix nodes={mockNodes} />);
-    // Check for the presence of the HandMatrix component markers
-    // The library usually renders a div with a specific class or structure
-    expect(container.querySelector('.HandMatrix')).toBeDefined();
-    expect(screen.getByText(/Range Matrix/i)).toBeInTheDocument();
+    // Check for the presence of the 13-column grid
+    expect(container.querySelector('.grid-cols-13')).toBeDefined();
+    expect(screen.getByText(/Strategy Matrix/i)).toBeInTheDocument();
   });
 });
 

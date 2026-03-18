@@ -14,13 +14,20 @@ export const SolutionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
   const location = useLocation();
 
-  // Sync with URL if we are in a dashboard or study route
+  // Persistence effect
+  useEffect(() => {
+    if (activeSolutionId) {
+      localStorage.setItem('gto_active_solution', activeSolutionId);
+    } else {
+      localStorage.removeItem('gto_active_solution');
+    }
+  }, [activeSolutionId]);
+
+  // Sync with URL
   useEffect(() => {
     const parts = location.pathname.split('/');
     if ((parts[1] === 'dashboard' || parts[1] === 'study') && parts[2]) {
-      const id = parts[2];
-      setActiveSolutionId(id);
-      localStorage.setItem('gto_active_solution', id);
+      setActiveSolutionId(parts[2]);
     }
   }, [location.pathname]);
 

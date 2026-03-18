@@ -1,4 +1,4 @@
-const BASE_URL = 'http://213.199.50.129:8000/api';
+const BASE_URL = import.meta.env.PROD ? 'http://localhost:8000/api' : '/api';
 
 interface RequestOptions extends RequestInit {
   params?: Record<string, string | number>;
