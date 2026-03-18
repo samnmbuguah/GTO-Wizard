@@ -9,8 +9,8 @@ from solutions.models import Solution, StrategyNode
 
 # Create superuser
 if not User.objects.filter(username='admin').exists():
-    User.objects.create_superuser('admin', 'admin@example.com', 'admin123')
-    print("Superuser created.")
+    User.objects.create_superuser('admin', 'admin@example.com', 'GtoMaster2026!')
+    print("Superuser created with secure password.")
 
 # Create a test solution
 solution, created = Solution.objects.get_or_create(

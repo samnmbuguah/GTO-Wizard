@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { HandMatrix } from '@holdem-poker-tools/hand-matrix';
 import type { StrategyNode } from '../types/poker';
+
+interface StrategyLock {
+  id: number;
+  node: number;
+  locked_actions: any;
+  is_active: boolean;
+}
 import { Maximize2, Minimize2, Lock, Unlock } from 'lucide-react';
 
 interface StrategyMatrixProps {
@@ -8,61 +15,64 @@ interface StrategyMatrixProps {
   onHandSelect?: (hand: string) => void;
 }
 
-interface NodeLock {
-  id?: number;
-  node: number;
-  locked_actions: Record<string, number>;
-  hand: string;
-}
-
 const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) => {
   const [matrixSize, setMatrixSize] = useState(600);
-  const [locks, setLocks] = useState<Record<string, NodeLock>>({});
+  const [locks, setLocks] = useState<Record<string, StrategyLock>>({});
 
   useEffect(() => {
     const fetchLocks = async () => {
-      try {
-        const res = await fetch('http://213.199.50.129:8000/api/locks/');
-        const data = await res.json();
-        const lockMap: Record<string, NodeLock> = {};
-        data.forEach((lock: any) => {
-          // We find the hand for this node
+      const token = localStorage.getItem('gto_token');
+    try {
+      const res = await fetch('http://213.199.50.129:8000/api/locks/', {
+        headers: { 'Authorization': `Token ${token}` }
+      });
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        const lockMap: Record<string, StrategyLock> = {};
+        data.forEach(lock => {
           const node = nodes.find(n => n.id === lock.node);
-          if (node) lockMap[node.hand] = { ...lock, hand: node.hand };
+          if (node) lockMap[node.hand] = lock;
         });
         setLocks(lockMap);
-      } catch (e) {
-        console.error('Failed to fetch locks:', e);
       }
-    };
+    } catch (err) {
+      console.error('Failed to fetch locks:', err);
+    }
+  };
     if (nodes.length > 0) fetchLocks();
   }, [nodes]);
 
   const toggleLock = async (hand: string, node: StrategyNode) => {
+    const token = localStorage.getItem('gto_token');
     const isLocked = !!locks[hand];
+
     try {
       if (isLocked) {
-        // Delete lock
-        const lockId = locks[hand].id;
-        await fetch(`http://213.199.50.129:8000/api/locks/${lockId}/`, { method: 'DELETE' });
+        await fetch(`http://213.199.50.129:8000/api/locks/${locks[hand].id}/`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Token ${token}` }
+        });
         const newLocks = { ...locks };
         delete newLocks[hand];
         setLocks(newLocks);
       } else {
-        // Create lock (locking current state)
         const res = await fetch('http://213.199.50.129:8000/api/locks/', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Token ${token}`
+          },
           body: JSON.stringify({
             node: node.id,
-            locked_actions: node.actions
-          })
+            locked_actions: node.actions,
+            is_active: true
+          }),
         });
         const newLock = await res.json();
-        setLocks({ ...locks, [hand]: { ...newLock, hand } });
+        setLocks({ ...locks, [hand]: newLock });
       }
-    } catch (e) {
-      console.error('Lock toggle failed:', e);
+    } catch (err) {
+      console.error('Failed to toggle lock:', err);
     }
   };
 
