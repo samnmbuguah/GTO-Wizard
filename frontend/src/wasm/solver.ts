@@ -17,13 +17,13 @@ class LiveSolver {
     this.wasmLoaded = true;
   }
 
-  calculate(board: string[], p1Range: string[], p2Range: string[], pot: number): SolverResult {
+  calculate(_board: string[], _p1Range: string[], _p2Range: string[], _pot: number): SolverResult {
     if (!this.wasmLoaded) {
       throw new Error("Solver not initialized");
     }
     
     // Mocking the WASM call results
-    console.log(`Solving board ${board.join('')}...`);
+    console.log(`Solving board ${_board.join('')}...`);
     return {
       strategy: {
         'AA': { 'check': 0.2, 'bet': 0.8 },

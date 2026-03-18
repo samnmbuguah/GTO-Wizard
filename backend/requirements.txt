@@ -1,12 +1,8 @@
-fastapi
-uvicorn
-sqlalchemy
+django
+djangorestframework
+django-cors-headers
 psycopg2-binary
-pydantic
-pydantic-settings
-python-multipart
-asyncpg
-databases
 python-dotenv
-alembic
 pandas
+gunicorn
+django-extensions
