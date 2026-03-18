@@ -49,7 +49,7 @@ const SidebarItem = ({ to, icon, label, collapsed, onClick }: SidebarItemProps) 
 );
 
 export const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
-  const [isDark, setIsDark] = useState(true);
+  const [isDark, setIsDark] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
