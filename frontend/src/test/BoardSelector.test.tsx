@@ -22,9 +22,9 @@ describe('BoardSelector', () => {
     const spades = screen.getAllByText('♠')[0];
 
     // Re-implemented tests verify parent backgrounds according to custom layout
-    expect(hearts.parentElement).toHaveClass('bg-[rgba(184,15,10,0.6)]');
-    expect(diamonds.parentElement).toHaveClass('bg-[rgba(0,50,73,0.6)]');
-    expect(clubs.parentElement).toHaveClass('bg-[#204f00]');
-    expect(spades.parentElement).toHaveClass('bg-[#070b0b]');
+    expect(hearts.parentElement).toHaveClass('bg-[#B80F0A]');
+    expect(diamonds.parentElement).toHaveClass('bg-[#457B9D]');
+    expect(clubs.parentElement).toHaveClass('bg-[#327A00]');
+    expect(spades.parentElement).toHaveClass('bg-[#182628]');
   });
 });

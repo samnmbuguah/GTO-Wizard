@@ -6,7 +6,10 @@ import {
   Unlock, 
   Settings as SettingsIcon,
   Shuffle,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Dice5,
+  RotateCcw,
+  MoreHorizontal
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 
@@ -164,7 +167,10 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
         {/* Grid Icons Toolbar */}
         <div className="flex justify-between items-center mb-1.5 px-0.5">
           <Shuffle className="w-3.5 h-3.5 text-[#7aa6da] cursor-pointer hover:text-white" />
-          <ArrowLeftRight className="w-3.5 h-3.5 text-[#7aa6da] cursor-pointer hover:text-white" />
+          <div className="flex gap-2">
+            <ArrowLeftRight className="w-3.5 h-3.5 text-[#7aa6da] cursor-pointer hover:text-white" />
+            <Dice5 className="w-3.5 h-3.5 text-[#7aa6da] cursor-pointer hover:text-white" />
+          </div>
         </div>
         
         <div className="w-full flex-1 relative">
@@ -184,11 +190,13 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
             <div className="flex items-center justify-center mb-10 mt-6 relative w-full">
               <Maximize2 className="w-6 h-6 absolute left-0 top-0 cursor-pointer hover:text-white" />
               <h3 className="text-xl font-bold">{selectedHand} strategy</h3>
-              <div className="absolute right-0 top-0 flex gap-2">
-                 <button onClick={() => toggleLock(selectedHand, selectedNode)} className="cursor-pointer hover:text-white">
+               <div className="absolute right-0 top-0 flex gap-2 items-center">
+                 <RotateCcw className="w-4 h-4 cursor-pointer hover:text-white mr-1" />
+                 <button onClick={() => toggleLock(selectedHand, selectedNode)} className="cursor-pointer hover:text-white p-0 bg-transparent border-none">
                     {isLocked ? <Lock className="w-4 h-4 text-yellow-500" /> : <Unlock className="w-4 h-4 text-yellow-500" />}
                  </button>
                  <SettingsIcon className="w-4 h-4 cursor-pointer hover:text-white" />
+                 <MoreHorizontal className="w-4 h-4 cursor-pointer hover:text-white ml-1" />
               </div>
             </div>
 

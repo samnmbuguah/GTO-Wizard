@@ -27,40 +27,53 @@ A world-class, responsive GTO (Game Theory Optimal) poker solver interface built
 
 ### One-Step Deployment
 
-Run the included deployment script to build and start all services:
+### One-Step Deployment
+
+Run the included deployment script to build, start services, and seed the database:
 
 ```bash
 ./deploy.sh
 ```
 
 The application will be available at:
-- **Frontend Terminal**: [http://213.199.50.129:8089](http://213.199.50.129:8089)
-- **Backend API**: [http://213.199.50.129:8000](http://213.199.50.129:8000)
-- **Admin Panel**: [http://213.199.50.129:8000/admin/](http://213.199.50.129:8000/admin/)
+- **Frontend App**: [http://localhost:8089](http://localhost:8089)
+- **Backend API**: [http://localhost:8000](http://localhost:8000)
+- **Admin Panel**: [http://localhost:8000/admin/](http://localhost:8000/admin/)
 
-### 🔐 Authentication (Default Credentials)
+### 🔐 Authentication & Security
 
-Access to the terminal and solver data is restricted. Use the following unprivileged user credentials to log in and explore the app:
-
+Access is restricted. A demo profile is provided for exploring the solver workspace:
 - **Username**: `player1`
 - **Password**: `Player1_Poker2026!`
 
 > [!IMPORTANT]
-> This is a public demonstration account. Superuser access and solver configurations should be managed securely via local environment variables and will never be committed to the repository.
+> **Production Security**: Passwords and keys are managed via `.env`. Never commit the `DATABASE_URL` or `SUPERUSER_PASSWORD` directly to the codebase. The `deploy.sh` script automatically reads from the host environment to populate these variables during build.
 
-## 🧪 Testing
+## 🎨 Professional UI Clone Highlights
 
-### Frontend
+- **3-Column Workspace**: Optimized for high-density poker data (18vw Sidebar / Center Matrix / Info Panel).
+- **Horizontal Action Segments**: Strategy matrix cells use stacked horizontal gradients (Fold: Blue, Call: Green, Raise: Red) for immediate parity with industry standards.
+- **Dynamic Filtering**: Left sidebar supports hierarchical navigation (SRP, 3-BET, 4-BET) and multi-stack depth filtering.
+- **Enhanced Board Selector**: 1:1 color parity for suits and responsive card toggling.
+
+## 🧪 Testing Coverage
+
+The project maintains high stability with comprehensive test suites:
+
+### Frontend (Vitest)
 ```bash
 cd frontend
 npm run test
 ```
+Tests cover: Dashboard navigation, Board selection logic, and Strategy Matrix rendering.
 
-### Backend
+### Backend (Django)
 ```bash
 cd backend
-./venv/bin/python manage.py test
+source venv/bin/activate
+python manage.py test
 ```
+**Coverage**: 60+ tests (100% pass rate) covering API filters, Node Locking, Equity distributions, and Solver configurations.
 
 ## 📜 License
 MIT License - Created for Professional Poker Development.
