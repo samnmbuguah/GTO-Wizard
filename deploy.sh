@@ -84,7 +84,7 @@ run_tests() {
     if [ -d "frontend" ]; then
         print_status "Running frontend tests..."
         cd frontend
-        if npm run test:coverage; then
+        if CI=1 npm run test:coverage -- --run; then
             print_success "Frontend tests passed!"
         else
             print_warning "Frontend tests failed, but continuing deployment..."

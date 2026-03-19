@@ -40,13 +40,13 @@ The application will be available at:
 
 ### 🔐 Authentication (Default Credentials)
 
-Access to the terminal and solver data is restricted. Use the following credentials to log in:
+Access to the terminal and solver data is restricted. Use the following unprivileged user credentials to log in and explore the app:
 
-- **Username**: `admin`
-- **Password**: `GtoMaster2026!`
+- **Username**: `player1`
+- **Password**: `Player1_Poker2026!`
 
 > [!IMPORTANT]
-> This is a public repository. It is highly recommended to change your password in the **Account Settings** after your first login into the production environment.
+> This is a public demonstration account. Superuser access and solver configurations should be managed securely via local environment variables and will never be committed to the repository.
 
 ## 🧪 Testing
 

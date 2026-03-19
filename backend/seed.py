@@ -8,14 +8,26 @@ from django.contrib.auth.models import User
 from solutions.models import Solution, StrategyNode
 
 # Create superuser
+su_pass = os.getenv('SUPERUSER_PASSWORD', 'fallback')
 if not User.objects.filter(username='admin').exists():
-    User.objects.create_superuser('admin', 'admin@example.com', 'GtoMaster2026!')
-    print("Superuser created with secure password.")
+    User.objects.create_superuser('admin', 'admin@example.com', su_pass)
+    print("Superuser created.")
 else:
     u = User.objects.get(username='admin')
-    u.set_password('GtoMaster2026!')
+    u.set_password(su_pass)
     u.save()
-    print("Superuser password updated to secure value.")
+    print("Superuser password updated.")
+
+# Create normal user for public demo/README
+nu_pass = os.getenv('NORMAL_USER_PASSWORD', 'fallback')
+if not User.objects.filter(username='player1').exists():
+    User.objects.create_user('player1', 'player1@example.com', nu_pass)
+    print("Normal user created.")
+else:
+    u = User.objects.get(username='player1')
+    u.set_password(nu_pass)
+    u.save()
+    print("Normal user password updated.")
 
 # Create diverse textured solutions
 textures = [
@@ -49,8 +61,7 @@ solution, created = Solution.objects.get_or_create(
     name="6-Max Cash 100bb Open SB",
     defaults={
         "rake": 0.05,
-        "stack_depth": 100,
-        "description": "Standard 6-max cash game opening range from SB."
+        "stack_depth": 100
     }
 )
 

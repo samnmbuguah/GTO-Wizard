@@ -1,4 +1,19 @@
 from django.db import models
+from django.contrib.postgres.indexes import GinIndex
+
+class SolverConfig(models.Model):
+    name = models.CharField(max_length=255)
+    solver_type = models.CharField(max_length=50, default='pio')
+    settings = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            GinIndex(fields=['settings'], name='solverconfig_settings_gin'),
+        ]
+
+    def __str__(self):
+        return self.name
 
 class Solution(models.Model):
     name = models.CharField(max_length=255)
@@ -12,8 +27,14 @@ class Solution(models.Model):
         ('Rainbow', 'Rainbow Board'),
         ('Straight-Friendly', 'Straight-Friendly'),
     ])
+    solver_config = models.ForeignKey(SolverConfig, null=True, blank=True, on_delete=models.SET_NULL, related_name='solutions')
     config = models.JSONField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            GinIndex(fields=['config'], name='solution_config_gin'),
+        ]
 
     def __str__(self):
         return self.name
