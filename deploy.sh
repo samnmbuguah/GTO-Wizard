@@ -115,10 +115,22 @@ run_tests() {
                 PYTHON_CMD="python"
             fi
             
-            if $PYTHON_CMD manage.py test; then
-                print_success "Backend tests passed!"
+            # Try to activate virtual environment
+            if [ -f "venv/bin/activate" ]; then
+                print_status "Activating virtual environment..."
+                source venv/bin/activate
+            fi
+
+            # Final check for Django availability to avoid ugly tracebacks
+            if ! $PYTHON_CMD -c "import django" &> /dev/null; then
+                print_warning "Django not found in current environment, skipping host-side backend tests..."
+                print_status "Note: Backend tests will still be verified within Docker during CI/CD."
             else
-                print_warning "Backend tests failed, but continuing deployment..."
+                if $PYTHON_CMD manage.py test; then
+                    print_success "Backend tests passed!"
+                else
+                    print_warning "Backend tests failed, but continuing deployment..."
+                fi
             fi
         fi
         cd ..
@@ -132,6 +144,10 @@ build_and_deploy() {
     # Stop existing containers
     print_status "Stopping existing containers..."
     docker compose down --remove-orphans || true
+    
+    # Explicitly remove potentially conflicting containers (handles cases where compose project might differ)
+    print_status "Cleaning up potentially conflicting containers..."
+    docker rm -f gto-wizard-db-1 gto-wizard-backend-1 gto-wizard-frontend-1 2>/dev/null || true
     
     # Build new images
     print_status "Building new images..."

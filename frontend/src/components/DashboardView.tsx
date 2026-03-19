@@ -108,6 +108,7 @@ const DashboardView: React.FC = () => {
           {tabs.map((tab) => (
             <button 
               key={tab} 
+              aria-label={`${tab} tab`}
               onClick={() => setActiveTab(tab)}
               className={`flex-1 pb-2 text-sm font-bold text-center border-b-2 transition-colors 
                 ${activeTab === tab ? 'text-white border-[#7aa6da]' : 'text-[#a1b4d9] border-transparent hover:text-white'}`}
