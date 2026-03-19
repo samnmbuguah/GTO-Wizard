@@ -140,15 +140,15 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
           if (onHandSelect) onHandSelect(hand);
         }}
         className={`
-          relative w-full aspect-square border-[0.5px] border-[#182628] overflow-hidden flex flex-col group
-          highLevelHandSolution p-button p-component hover:opacity-80 transition-opacity
-          ${isSelected ? 'ring-2 ring-white z-10' : ''}
-          ${handIsLocked ? 'ring-2 ring-yellow-500 z-10' : ''}
+          relative w-full h-7 border-[0.1px] border-[#182628]/30 overflow-hidden flex flex-col group
+          hover:opacity-90 transition-opacity
+          ${isSelected ? 'ring-1 ring-white/50 z-10' : ''}
+          ${handIsLocked ? 'ring-1 ring-yellow-500/50 z-10' : ''}
         `}
         style={{ background: backgroundStyle, color: COLORS.text }}
         title={tooltipText}
       >
-        <span className="absolute inset-0 flex items-center justify-center z-10 w-full text-center text-[9px] sm:text-[10px] md:text-[11.5px] font-black uppercase tracking-tighter pointer-events-none drop-shadow-md leading-none">
+        <span className="absolute inset-0 flex items-center justify-center z-10 w-full text-center text-[9px] sm:text-[10px] md:text-[10.5px] font-bold uppercase tracking-tighter pointer-events-none drop-shadow-sm leading-none opacity-80">
           {hand}
         </span>
         
@@ -173,8 +173,8 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
           </div>
         </div>
         
-        <div className="w-full flex-1 relative">
-          <div className="grid grid-cols-13 w-full h-full border border-[#182628]">
+        <div className="w-full relative">
+          <div className="grid grid-cols-13 w-full h-auto border border-[#182628]/20 bg-[#182628]/10 rounded-sm">
             {ranks.map(rankRow => (
               <React.Fragment key={rankRow}>
                 {ranks.map(rankCol => renderCell(rankRow, rankCol))}
