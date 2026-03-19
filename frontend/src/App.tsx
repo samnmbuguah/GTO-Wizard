@@ -36,31 +36,12 @@ const LoadingSpinner = () => (
 
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { apiClient } from './api/client'
 
 const DashboardRedirect = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const lastId = localStorage.getItem('gto_active_solution');
-    if (lastId) {
-      navigate(`/dashboard/${lastId}`, { replace: true });
-      return;
-    }
-
-    const fetchDefault = async () => {
-      try {
-        const solutions = await apiClient.get<any[]>('/solutions/');
-        if (solutions && solutions.length > 0) {
-          navigate(`/dashboard/${solutions[0].id}`, { replace: true });
-        } else {
-          navigate('/library', { replace: true });
-        }
-      } catch (err) {
-        navigate('/library', { replace: true });
-      }
-    };
-    fetchDefault();
+    navigate('/dashboard', { replace: true });
   }, [navigate]);
 
   return <LoadingSpinner />;
@@ -72,28 +53,25 @@ function App() {
       <Suspense fallback={<LoadingSpinner />}>
         <Routes>
           <Route path="/login" element={<LoginView />} />
-          
-          <Route 
-            path="/*" 
+
+          <Route
             element={
               <AuthGuard>
                 <SolutionProvider>
-                  <DashboardLayout>
-                    <Routes>
-                      <Route path="/" element={<DashboardRedirect />} />
-                      <Route path="/dashboard" element={<DashboardRedirect />} />
-                      <Route path="/dashboard/:solutionId" element={<DashboardView />} />
-                      <Route path="/library" element={<LibraryView />} />
-                      <Route path="/reports" element={<ReportsView />} />
-                      <Route path="/study/:solutionId" element={<StudyView />} />
-                      <Route path="/account" element={<AccountView />} />
-                      <Route path="/settings" element={<SettingsView />} />
-                    </Routes>
-                  </DashboardLayout>
+                  <DashboardLayout />
                 </SolutionProvider>
               </AuthGuard>
-            } 
-          />
+            }
+          >
+            <Route index element={<DashboardRedirect />} />
+            <Route path="dashboard" element={<DashboardView />} />
+            <Route path="dashboard/:solutionId" element={<DashboardView />} />
+            <Route path="library" element={<LibraryView />} />
+            <Route path="reports" element={<ReportsView />} />
+            <Route path="study/:solutionId" element={<StudyView />} />
+            <Route path="account" element={<AccountView />} />
+            <Route path="settings" element={<SettingsView />} />
+          </Route>
         </Routes>
       </Suspense>
     </BrowserRouter>

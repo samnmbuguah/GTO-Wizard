@@ -48,8 +48,7 @@ describe('StrategyMatrix', () => {
   it('renders correctly', () => {
     const { container } = render(<StrategyMatrix nodes={mockNodes} />);
     // Check for the presence of the 13-column grid
-    expect(container.querySelector('.grid-cols-13')).toBeDefined();
-    expect(screen.getByText(/Strategy Matrix/i)).toBeInTheDocument();
+    expect(container.querySelector('.solutionGrid')).toBeDefined();
   });
 });
 

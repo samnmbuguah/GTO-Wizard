@@ -2,14 +2,8 @@ import React, { useState, useEffect } from 'react';
 import type { StrategyNode } from '../types/poker';
 import { 
   Maximize2, 
-  Minimize2, 
   Lock, 
   Unlock, 
-  Edit2, 
-  Check, 
-  X,
-  Shuffle,
-  RefreshCw,
   Settings as SettingsIcon
 } from 'lucide-react';
 import { apiClient } from '../api/client';
@@ -30,42 +24,16 @@ const ranks = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2'];
 
 // Color constants from reference
 const COLORS = {
-  green: 'rgba(50, 122, 0, 0.6)',
-  blue: 'rgba(69, 123, 157, 0.6)',
+  green: '#327A00', // Call
+  blue: '#457B9D', // Fold
+  red: '#B80F0A', // Raise
   gray: 'rgb(87, 97, 98)',
   text: 'rgb(204, 219, 220)'
 };
 
 const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) => {
-  const [matrixSize, setMatrixSize] = useState(800);
   const [locks, setLocks] = useState<Record<string, StrategyLock>>({});
   const [selectedHand, setSelectedHand] = useState<string | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedActions, setEditedActions] = useState<Record<string, number> | null>(null);
-
-  const handleFrequencyChange = (actionToChange: string, newValue: number) => {
-    if (!editedActions) return;
-    const newActions = { ...editedActions };
-    const oldValue = newActions[actionToChange];
-    const diff = newValue - oldValue;
-    newActions[actionToChange] = newValue;
-    const otherActions = Object.keys(newActions).filter(a => a !== actionToChange);
-    const totalOther = otherActions.reduce((sum, a) => sum + newActions[a], 0);
-    if (totalOther > 0) {
-      otherActions.forEach(a => {
-        newActions[a] = Math.max(0, newActions[a] - (diff * (newActions[a] / totalOther)));
-      });
-    } else if (otherActions.length > 0) {
-      otherActions.forEach(a => {
-        newActions[a] = Math.max(0, (1 - newValue) / otherActions.length);
-      });
-    }
-    const finalSum = Object.values(newActions).reduce((a, b) => a + b, 0);
-    if (finalSum > 0) {
-      Object.keys(newActions).forEach(a => newActions[a] /= finalSum);
-    }
-    setEditedActions(newActions);
-  };
 
   useEffect(() => {
     const fetchLocks = async () => {
@@ -123,31 +91,31 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
     const actions = node?.actions || { fold: 1.0 };
     
     // Calculate gradient based on action frequencies
-    let backgroundStyle = '';
-    let textColor = 'inherit';
+    const foldFreq = (actions.fold ?? actions.Fold) || 0;
+    const callFreq = (actions.call ?? actions.Call) || 0;
+    const raiseFreq = (actions.raise ?? actions.Raise) || 0;
     
-    const foldFreq = actions.fold || 0;
-    const callFreq = actions.call || 0;
-    const raiseFreq = actions.raise || 0;
-    
-    if (foldFreq >= 0.5) {
-      // Mostly fold - solid gray
-      backgroundStyle = `background: linear-gradient(to right, ${COLORS.gray} 50%, ${COLORS.gray} 100%)`;
-      textColor = 'inherit';
-    } else if (callFreq > 0 && raiseFreq > 0) {
-      // Mixed actions - gradient
-      const callPercentage = callFreq / (callFreq + raiseFreq) * 100;
-      backgroundStyle = `background: linear-gradient(to right, ${COLORS.green} ${callPercentage}%, ${COLORS.blue} ${callPercentage}%, ${COLORS.blue} 100%)`;
-      textColor = COLORS.text;
-    } else if (callFreq > 0.5) {
-      // Mostly call - solid green
-      backgroundStyle = `background: linear-gradient(to right, ${COLORS.green} 50%, ${COLORS.green} 100%)`;
-      textColor = COLORS.text;
-    } else if (raiseFreq > 0.5) {
-      // Mostly raise - solid blue
-      backgroundStyle = `background: linear-gradient(to right, ${COLORS.blue} 50%, ${COLORS.blue} 100%)`;
-      textColor = COLORS.text;
+    const foldPct = foldFreq * 100;
+    const callPct = callFreq * 100;
+    const raisePct = raiseFreq * 100;
+
+    let gradientStops: string[] = [];
+    let currentPct = 0;
+    if (raisePct > 0) {
+      gradientStops.push(`${COLORS.red} ${currentPct}%`, `${COLORS.red} ${currentPct + raisePct}%`);
+      currentPct += raisePct;
     }
+    if (callPct > 0) {
+      gradientStops.push(`${COLORS.green} ${currentPct}%`, `${COLORS.green} ${currentPct + callPct}%`);
+      currentPct += callPct;
+    }
+    if (foldPct > 0) {
+      gradientStops.push(`${COLORS.blue} ${currentPct}%`, `${COLORS.blue} ${currentPct + foldPct}%`);
+    }
+
+    const backgroundStyle = gradientStops.length > 0 
+      ? `linear-gradient(to bottom, ${gradientStops.join(', ')})`
+      : COLORS.gray;
     
     // Calculate tooltip text
     let tooltipText = 'No folds';
@@ -155,7 +123,7 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
       const totalFreq = foldFreq + callFreq + raiseFreq;
       if (totalFreq > 0) {
         const foldPercentage = (foldFreq / totalFreq * 100).toFixed(2);
-        tooltipText = `${foldPercentage}`;
+        tooltipText = `${foldPercentage}% fold`;
       }
     }
     
@@ -167,21 +135,21 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
           if (onHandSelect) onHandSelect(hand);
         }}
         className={`
-          relative w-full aspect-square border-l border-t border-poker-gray overflow-hidden flex flex-col group
-          highLevelHandSolution p-button p-component
-          ${isSelected ? 'ring-2 ring-poker-accent z-10' : ''}
-          ${handIsLocked ? 'ring-1 ring-yellow-500 z-10' : ''}
+          relative w-full aspect-square border-[0.5px] border-[#182628] overflow-hidden flex flex-col group
+          highLevelHandSolution p-button p-component hover:opacity-80 transition-opacity
+          ${isSelected ? 'ring-2 ring-white z-10' : ''}
+          ${handIsLocked ? 'ring-2 ring-yellow-500 z-10' : ''}
         `}
-        style={{ background: backgroundStyle, color: textColor }}
+        style={{ background: backgroundStyle, color: COLORS.text }}
         title={tooltipText}
       >
-        <span className="relative z-10 w-full text-center text-[9px] font-black uppercase tracking-tighter pt-1 pointer-events-none">
+        <span className="relative z-10 w-full text-center text-[8px] sm:text-[10px] md:text-[12px] font-black uppercase tracking-tighter pt-0.5 pointer-events-none drop-shadow-md">
           {hand}
         </span>
         
         {handIsLocked && (
           <div className="absolute right-0.5 bottom-0.5 z-10">
-            <Lock className="w-2 h-2 text-white" />
+            <Lock className="w-2 h-2 text-white drop-shadow-md" />
           </div>
         )}
       </button>
@@ -189,136 +157,64 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
   };
 
   return (
-    <div className="strategy-container">
-      <div className="strategy-header">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <button className="p-1.5 bg-poker-gray hover:bg-poker-darkgray rounded text-poker-light hover:text-white transition-all">
-              <Shuffle className="w-3 h-3" />
-            </button>
-            <button className="p-1.5 bg-poker-gray hover:bg-poker-darkgray rounded text-poker-light hover:text-white transition-all">
-              <RefreshCw className="w-3 h-3" />
-            </button>
+    <div className="flex w-full h-full text-[#ccdbdc]">
+      <div className="flex-[2] mr-4 relative min-w-0">
+        <div className="w-full h-full max-h-full aspect-square mx-auto">
+          <div className="grid grid-cols-13 w-full h-full border border-[#182628]">
+            {ranks.map(rankRow => (
+              <React.Fragment key={rankRow}>
+                {ranks.map(rankCol => renderCell(rankRow, rankCol))}
+              </React.Fragment>
+            ))}
           </div>
-          
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1">
-              <Minimize2 className="w-3 h-3 text-poker-light" />
-              <input 
-                type="range" 
-                min="280" 
-                max="1200" 
-                value={matrixSize} 
-                onChange={(e) => setMatrixSize(parseInt(e.target.value))}
-                className="w-24 accent-poker-accent h-1 cursor-pointer"
-              />
-              <Maximize2 className="w-3 h-3 text-poker-light" />
-            </div>
-          </div>
-          
-          <button className="p-1.5 bg-poker-gray hover:bg-poker-darkgray rounded text-poker-light hover:text-white transition-all">
-            <SettingsIcon className="w-3 h-3" />
-          </button>
         </div>
       </div>
-      
-      <div className="strategy-content">
-        <div className="range-visualizer">
-          <div 
-            className="solutionGrid"
-            style={{ width: '100%', maxWidth: `${matrixSize}px`, aspectRatio: '1/1' }}
-          >
-            <div className="solutionGrid-row">
-              {ranks.map(rankRow => (
-                <div key={rankRow} className="solutionGrid-row-handButton">
-                  {ranks.map(rankCol => renderCell(rankRow, rankCol))}
+
+      <div className="flex-1 min-w-[200px] flex flex-col items-center justify-center p-4 bg-[#0d1f1f] rounded text-[#ccdbdc] h-full shadow-inner relative">
+        {selectedHand && selectedNode ? (
+          <div className="w-full flex-1 flex flex-col h-full">
+            <div className="flex items-center justify-center mb-10 mt-6 relative w-full">
+              <Maximize2 className="w-6 h-6 absolute left-0 top-0 cursor-pointer hover:text-white" />
+              <h3 className="text-xl font-bold">{selectedHand} strategy</h3>
+              <div className="absolute right-0 top-0 flex gap-2">
+                 <button onClick={() => toggleLock(selectedHand, selectedNode)} className="cursor-pointer hover:text-white">
+                    {isLocked ? <Lock className="w-4 h-4 text-yellow-500" /> : <Unlock className="w-4 h-4 text-yellow-500" />}
+                 </button>
+                 <SettingsIcon className="w-4 h-4 cursor-pointer hover:text-white" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-8 mt-10 w-full text-center">
+              <div>
+                <p className="text-[14px] font-bold uppercase tracking-wider mb-2">Weighting</p>
+                <p className="text-xl font-black">14.2%</p>
+              </div>
+              <div>
+                <p className="text-[14px] font-bold uppercase tracking-wider mb-2">EV</p>
+                <p className="text-xl font-black">+5.24 BB</p>
+              </div>
+            </div>
+            
+            <div className="space-y-4 mt-12 w-full px-4">
+              {Object.entries(selectedNode.actions || {}).map(([action, freq]) => (
+                <div key={action} className="space-y-1 w-full">
+                  <div className="flex justify-between text-xs font-bold uppercase border-b border-[#2d393b] pb-1">
+                    <span>{action}</span>
+                    <span className="font-black text-white">{(freq * 100).toFixed(1)}%</span>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
-        </div>
-
-        <div className="strategy-details">
-          {selectedHand && selectedNode ? (
-            <div className="p-4 bg-poker-gray rounded-lg">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-black text-white">{selectedHand}</h3>
-                <div className="flex items-center gap-2">
-                  {!isEditing && (
-                    <button 
-                      onClick={() => {
-                        setIsEditing(true);
-                        setEditedActions({ ...selectedNode.actions });
-                      }}
-                      className="p-1.5 rounded bg-poker-accent/20 text-poker-accent hover:bg-poker-accent/30 transition-all"
-                    >
-                      <Edit2 className="w-3 h-3" />
-                    </button>
-                  )}
-                  {isEditing ? (
-                    <>
-                      <button onClick={() => { setIsEditing(false); setEditedActions(null); }} className="p-1.5 rounded bg-poker-red/20 text-poker-red hover:bg-poker-red/30">
-                        <X className="w-3 h-3" />
-                      </button>
-                      <button onClick={() => { toggleLock(selectedHand, selectedNode, editedActions); setIsEditing(false); setEditedActions(null); }} className="p-1.5 rounded bg-poker-green/20 text-poker-green hover:bg-poker-green/30">
-                        <Check className="w-3 h-3" />
-                      </button>
-                    </>
-                  ) : (
-                    <button 
-                      onClick={() => toggleLock(selectedHand, selectedNode)}
-                      className={`p-1.5 rounded transition-all ${isLocked ? 'bg-yellow-500 text-black' : 'bg-poker-gray/20 text-poker-light hover:bg-poker-gray/30'}`}
-                    >
-                      {isLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {(editedActions || selectedNode.actions) && Object.entries(editedActions || selectedNode.actions).map(([action, freq]) => (
-                  <div key={action} className="space-y-1">
-                    <div className="flex justify-between text-xs font-bold uppercase">
-                      <span className={isEditing ? 'text-poker-accent' : 'text-poker-light'}>{action}</span>
-                      <span className="font-black text-white">{(freq * 100).toFixed(1)}%</span>
-                    </div>
-                    {isEditing ? (
-                      <input type="range" min="0" max="1" step="0.01" value={freq} onChange={(e) => handleFrequencyChange(action, parseFloat(e.target.value))} className="w-full h-1 rounded-full appearance-none cursor-pointer bg-poker-gray accent-poker-accent"/>
-                    ) : (
-                      <div className="h-1 w-full bg-poker-darkgray rounded-full overflow-hidden">
-                        <div 
-                          className="h-full rounded-full"
-                          style={{ width: `${(freq || 0) * 100}%`, backgroundColor: action === 'raise' ? COLORS.blue : action === 'call' ? COLORS.green : COLORS.gray }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="p-8 text-center bg-poker-gray rounded-lg">
-              <Maximize2 className="w-6 h-6 text-poker-light/40 mx-auto mb-3" />
-              <p className="text-xs text-poker-light font-medium">Select a hand to view strategy</p>
-            </div>
-          )}
-          
-          <div className="grid grid-cols-2 gap-3 mt-4">
-            <div className="p-3 bg-poker-gray rounded-lg">
-              <p className="text-xs text-poker-light uppercase font-bold mb-1">Weighting</p>
-              <p className="text-sm font-black text-white">14.2%</p>
-            </div>
-            <div className="p-3 bg-poker-gray rounded-lg">
-              <p className="text-xs text-poker-light uppercase font-bold mb-1">EV</p>
-              <p className="text-sm font-black text-poker-green">+5.24 BB</p>
-            </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full text-[#7aa6da]">
+            <Maximize2 className="w-6 h-6 mb-4 opacity-70" />
+            <p className="text-[14px] font-medium">Select a hand to view strategy</p>
           </div>
-        </div>
-      </div>
-      
-      <div className="strategy-footer">
-        <button className="strategy-settingsButton">
-          <SettingsIcon className="strategy-settingsButtonIcon" />
+        )}
+        
+        <button className="absolute bottom-4 right-4 bg-transparent border border-[#2d393b] rounded p-2 hover:bg-[#2d393b] hover:text-white transition-colors cursor-pointer">
+          <SettingsIcon className="w-4 h-4" />
         </button>
       </div>
     </div>

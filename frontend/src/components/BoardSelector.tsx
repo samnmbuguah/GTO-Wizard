@@ -1,55 +1,26 @@
 import React from 'react';
-import { RotateCcw } from 'lucide-react';
 
 interface BoardSelectorProps {
-  board?: string[]; // e.g. ['6h', '6c', 'Ts']
+  board?: string[]; // e.g. ['Kh', 'Qd', 'Ts']
   onReset?: () => void;
   onCardToggle?: (card: string) => void;
 }
 
-const BoardSelector: React.FC<BoardSelectorProps> = ({ board = [], onReset, onCardToggle }) => {
+const BoardSelector: React.FC<BoardSelectorProps> = ({ board = [], onCardToggle }) => {
   const suits = [
-    { id: 'h', symbol: '♥', color: 'text-poker-red', bg: 'bg-poker-red/20' },
-    { id: 'd', symbol: '♦', color: 'text-poker-red', bg: 'bg-poker-red/20' },
-    { id: 's', symbol: '♠', color: 'text-poker-light', bg: 'bg-poker-green/20' },
-    { id: 'c', symbol: '♣', color: 'text-poker-light', bg: 'bg-poker-green/20' },
+    { id: 'h', symbol: '♥', bgClass: 'bg-[rgba(184,15,10,0.6)] hover:bg-[rgb(184,15,10)] border-[rgba(184,15,10,0.6)]' },
+    { id: 'd', symbol: '♦', bgClass: 'bg-[rgba(0,50,73,0.6)] hover:bg-[#003249] border-[#003249]' },
+    { id: 'c', symbol: '♣', bgClass: 'bg-[#204f00] hover:bg-[#204f00] border-[#204f00]' },
+    { id: 's', symbol: '♠', bgClass: 'bg-[#070b0b] hover:bg-[#070b0b] border-[#070b0b]' },
   ];
   
   const ranks = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2'];
 
   return (
-    <div className="space-y-4">
-      {/* Selected Cards Display */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h3 className="text-xs font-black uppercase tracking-wider text-poker-light">Board Selection</h3>
-          <div className="flex gap-1">
-            {board.map((card) => {
-              const s = card.slice(-1);
-              const r = card.slice(0, -1);
-              const suitObj = suits.find(obj => obj.id === s);
-              return (
-                <div key={card} className="px-2 py-1 bg-poker-gray border border-poker-gray rounded flex items-center gap-1.5 min-w-[32px] justify-center">
-                  <span className="text-xs font-bold text-white">{r}</span>
-                  <span className={`text-xs ${suitObj?.color}`}>{suitObj?.symbol}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        <button 
-          onClick={onReset}
-          className="p-2 hover:bg-poker-gray text-poker-light hover:text-white rounded-lg transition-all"
-          title="Clear Board"
-        >
-          <RotateCcw className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Card Grid */}
-      <div className="grid grid-cols-13 gap-px bg-poker-gray p-2 rounded">
-        {suits.map((suit) => (
-          ranks.map((rank) => {
+    <div className="flex flex-col bg-[#2d393b] p-1.5 rounded-[5px] w-full gap-[3px]">
+      {suits.map((suit) => (
+        <div key={suit.id} className="flex w-full gap-[3px]">
+          {ranks.map((rank) => {
             const card = `${rank}${suit.id}`;
             const isSelected = board.includes(card);
             
@@ -58,22 +29,18 @@ const BoardSelector: React.FC<BoardSelectorProps> = ({ board = [], onReset, onCa
                 key={card}
                 onClick={() => onCardToggle && onCardToggle(card)}
                 className={`
-                  aspect-square flex flex-col items-center justify-center transition-all duration-150 text-xs font-black
-                  ${isSelected 
-                    ? `bg-poker-accent text-white scale-105 z-10` 
-                    : suit.id === 'h' || suit.id === 'd'
-                    ? `bg-poker-red/30 text-poker-red hover:bg-poker-red/50`
-                    : `bg-poker-green/30 text-poker-light hover:bg-poker-green/50`
-                  }
+                  flex-1 flex items-center justify-center rounded-[3px] h-[30px] text-[16px] text-[#ccdbdc] font-sans font-[500] transition-colors cursor-pointer border-none
+                  ${suit.bgClass}
+                  ${isSelected ? 'opacity-50 ring-1 ring-white' : ''}
                 `}
               >
-                <span className="text-xs font-bold leading-none">{rank}</span>
-                <span className="text-lg leading-none mt-0.5">{suit.symbol}</span>
+                <span className="mr-0.5">{rank}</span>
+                <span className="text-[12px]">{suit.symbol}</span>
               </button>
             )
-          })
-        ))}
-      </div>
+          })}
+        </div>
+      ))}
     </div>
   );
 };

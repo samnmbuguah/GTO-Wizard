@@ -18,4 +18,5 @@ export interface Solution {
   name: string;
   rake?: number;
   stack_depth?: number;
+  solver_config_id?: number;
 }
