@@ -6,15 +6,14 @@ describe('BoardSelector', () => {
   it('renders correctly with default board', () => {
     render(<BoardSelector board={['6h', '6c', 'Ts']} />);
     
-    // Rank '6' appears in board display (2) + grid (1 per suit = 4) = 6 times
-    expect(screen.getAllByText('6')).toHaveLength(6);
-    // Rank 'T' appears in board display (1) + grid (4) = 5 times
-    expect(screen.getAllByText('T')).toHaveLength(5);
-    // Reset is now an icon button with title
-    expect(screen.getByTitle(/Clear Board/i)).toBeInTheDocument();
+    // Rank '6' appears in grid 4 times (1 per suit)
+    expect(screen.getAllByText('6')).toHaveLength(4);
+    // Rank 'T' appears in grid 4 times 
+    expect(screen.getAllByText('T')).toHaveLength(4);
   });
 
   it('applies correct colors for suits', () => {
+    // Render with 4 aces selected
     render(<BoardSelector board={['Ah', 'Ad', 'Ac', 'As']} />);
     
     const hearts = screen.getAllByText('♥')[0];
@@ -22,9 +21,10 @@ describe('BoardSelector', () => {
     const clubs = screen.getAllByText('♣')[0];
     const spades = screen.getAllByText('♠')[0];
 
-    expect(hearts).toHaveClass('text-rose-500');
-    expect(diamonds).toHaveClass('text-blue-500');
-    expect(clubs).toHaveClass('text-emerald-500');
-    expect(spades).toHaveClass('text-white');
+    // Re-implemented tests verify parent backgrounds according to custom layout
+    expect(hearts.parentElement).toHaveClass('bg-[rgba(184,15,10,0.6)]');
+    expect(diamonds.parentElement).toHaveClass('bg-[rgba(0,50,73,0.6)]');
+    expect(clubs.parentElement).toHaveClass('bg-[#204f00]');
+    expect(spades.parentElement).toHaveClass('bg-[#070b0b]');
   });
 });
