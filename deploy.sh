@@ -39,7 +39,7 @@ check_health() {
     while [ $attempt -le $max_attempts ]; do
         # Use docker compose exec for backend to avoid localhost networking issues
         if [ "$service_name" = "Backend" ]; then
-            if docker compose exec -T backend python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/')" > /dev/null 2>&1; then
+            if docker compose exec -T backend python -c "import socket; s=socket.create_connection(('127.0.0.1', 8000), 2); s.close()" > /dev/null 2>&1; then
                 print_success "$service_name is healthy!"
                 return 0
             fi
