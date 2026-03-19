@@ -140,14 +140,24 @@ const DashboardView: React.FC = () => {
       <div className="flex flex-col items-center w-full px-3 py-2 overflow-y-auto bg-[#00140f]">
         
         {/* Top Toolbar */}
-        <div className="flex w-full justify-between items-center pb-3">
-          <button className="bg-[#465f61] text-[#182628] font-bold px-5 py-1.5 rounded-[3px] text-sm hover:bg-[#003249] hover:text-white transition-colors">
-            root
-          </button>
+        <div className="flex w-full justify-between items-center pb-3 px-1">
+          <div className="flex items-center gap-2">
+            <button className="bg-[#2d393b] text-[#ccdbdc] font-bold px-3 py-1 rounded-[3px] text-xs hover:bg-[#465f61] transition-colors border border-[#182628]">
+              root
+            </button>
+          </div>
+
+          <div className="flex flex-col items-center gap-0">
+            <div className="flex items-center gap-2">
+              <span className="bg-[#0d1f1f] text-[#7aa6da] px-2 py-0.5 rounded text-[10px] font-black tracking-widest uppercase border border-[#7aa6da]/20">PREFLOP</span>
+              <span className="bg-[#003249] text-white px-3 py-0.5 rounded text-xs font-black uppercase">BTN</span>
+            </div>
+            <span className="text-[10px] font-bold text-[#7aa6da]/80 mt-0.5 tracking-tight">3BET = 7.5 BB</span>
+          </div>
           
-          <div className="flex items-center gap-4">
-             <div className="w-[180px] h-[32px] bg-[#0d1f1f] rounded-[4px]"></div>
-             <button className="bg-[#465f61] text-[#182628] font-bold px-6 py-1.5 rounded-[3px] hover:bg-[#003249] hover:text-white transition-colors text-sm">
+          <div className="flex items-center gap-3">
+             <div className="w-[140px] h-[30px] bg-[#0d1f1f] rounded-[4px] border border-[#182628]"></div>
+             <button className="bg-[#465f61] text-white font-black px-5 py-1.5 rounded-[3px] hover:bg-[#003249] transition-colors text-xs uppercase tracking-wider">
                RESET
              </button>
           </div>

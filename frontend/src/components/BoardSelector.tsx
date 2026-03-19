@@ -8,10 +8,10 @@ interface BoardSelectorProps {
 
 const BoardSelector: React.FC<BoardSelectorProps> = ({ board = [], onCardToggle }) => {
   const suits = [
-    { id: 'h', symbol: '♥', bgClass: 'bg-[rgba(184,15,10,0.6)] hover:bg-[rgb(184,15,10)] border-[rgba(184,15,10,0.6)]' },
-    { id: 'd', symbol: '♦', bgClass: 'bg-[rgba(0,50,73,0.6)] hover:bg-[#003249] border-[#003249]' },
-    { id: 'c', symbol: '♣', bgClass: 'bg-[#204f00] hover:bg-[#204f00] border-[#204f00]' },
-    { id: 's', symbol: '♠', bgClass: 'bg-[#070b0b] hover:bg-[#070b0b] border-[#070b0b]' },
+    { id: 'h', symbol: '♥', color: '#B80F0A', bgClass: 'bg-[#B80F0A]' },
+    { id: 'd', symbol: '♦', color: '#457B9D', bgClass: 'bg-[#457B9D]' },
+    { id: 's', symbol: '♠', color: '#182628', bgClass: 'bg-[#182628]' },
+    { id: 'c', symbol: '♣', color: '#327A00', bgClass: 'bg-[#327A00]' },
   ];
   
   const ranks = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2'];
@@ -29,13 +29,13 @@ const BoardSelector: React.FC<BoardSelectorProps> = ({ board = [], onCardToggle 
                 key={card}
                 onClick={() => onCardToggle && onCardToggle(card)}
                 className={`
-                  flex-1 flex items-center justify-center rounded-[3px] h-[30px] text-[16px] text-[#ccdbdc] font-sans font-[500] transition-colors cursor-pointer border-none
+                  flex-1 flex items-center justify-center rounded-[2px] h-[32px] text-[15px] text-white font-bold transition-all cursor-pointer border-none
                   ${suit.bgClass}
-                  ${isSelected ? 'opacity-50 ring-1 ring-white' : ''}
+                  ${isSelected ? 'brightness-150 ring-2 ring-white z-10' : 'hover:brightness-110'}
                 `}
               >
-                <span className="mr-0.5">{rank}</span>
-                <span className="text-[12px]">{suit.symbol}</span>
+                <span className="mr-0.5 drop-shadow-md">{rank}</span>
+                <span className="text-[14px] drop-shadow-md">{suit.symbol}</span>
               </button>
             )
           })}

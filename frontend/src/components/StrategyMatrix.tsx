@@ -4,7 +4,9 @@ import {
   Maximize2, 
   Lock, 
   Unlock, 
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Shuffle,
+  ArrowLeftRight
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 
@@ -114,7 +116,7 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
     }
 
     const backgroundStyle = gradientStops.length > 0 
-      ? `linear-gradient(to bottom, ${gradientStops.join(', ')})`
+      ? `linear-gradient(to right, ${gradientStops.join(', ')})`
       : COLORS.gray;
     
     // Calculate tooltip text
@@ -143,7 +145,7 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
         style={{ background: backgroundStyle, color: COLORS.text }}
         title={tooltipText}
       >
-        <span className="relative z-10 w-full text-center text-[8px] sm:text-[10px] md:text-[12px] font-black uppercase tracking-tighter pt-0.5 pointer-events-none drop-shadow-md">
+        <span className="absolute inset-0 flex items-center justify-center z-10 w-full text-center text-[9px] sm:text-[10px] md:text-[11.5px] font-black uppercase tracking-tighter pointer-events-none drop-shadow-md leading-none">
           {hand}
         </span>
         
@@ -158,8 +160,14 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
 
   return (
     <div className="flex w-full h-full text-[#ccdbdc]">
-      <div className="flex-[2] mr-4 relative min-w-0">
-        <div className="w-full h-full max-h-full aspect-square mx-auto">
+      <div className="flex-[2] mr-4 relative min-w-0 flex flex-col">
+        {/* Grid Icons Toolbar */}
+        <div className="flex justify-between items-center mb-1.5 px-0.5">
+          <Shuffle className="w-3.5 h-3.5 text-[#7aa6da] cursor-pointer hover:text-white" />
+          <ArrowLeftRight className="w-3.5 h-3.5 text-[#7aa6da] cursor-pointer hover:text-white" />
+        </div>
+        
+        <div className="w-full flex-1 relative">
           <div className="grid grid-cols-13 w-full h-full border border-[#182628]">
             {ranks.map(rankRow => (
               <React.Fragment key={rankRow}>
@@ -170,7 +178,7 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
         </div>
       </div>
 
-      <div className="flex-1 min-w-[200px] flex flex-col items-center justify-center p-4 bg-[#0d1f1f] rounded text-[#ccdbdc] h-full shadow-inner relative">
+      <div className="flex-1 min-w-[200px] flex flex-col items-center justify-center p-4 bg-[#0d1f1f] rounded text-[#ccdbdc] h-full shadow-inner relative border border-[#182628]">
         {selectedHand && selectedNode ? (
           <div className="w-full flex-1 flex flex-col h-full">
             <div className="flex items-center justify-center mb-10 mt-6 relative w-full">
@@ -207,9 +215,9 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
             </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center h-full text-[#7aa6da]">
-            <Maximize2 className="w-6 h-6 mb-4 opacity-70" />
-            <p className="text-[14px] font-medium">Select a hand to view strategy</p>
+          <div className="flex flex-col items-center justify-center h-full text-[#7aa6da] w-full gap-4 opacity-50">
+             <Maximize2 className="w-10 h-10 transform rotate-45" />
+             <p className="text-[13px] font-bold uppercase tracking-widest text-center">Select a hand to view strategy</p>
           </div>
         )}
         
