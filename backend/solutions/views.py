@@ -2,8 +2,8 @@ from rest_framework import viewsets, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.db.models import Avg, Sum
-from .models import Solution, StrategyNode, StrategyLock, StudySession
-from .serializers import SolutionSerializer, StrategyNodeSerializer, StrategyLockSerializer, StudySessionSerializer
+from .models import SolverConfig, Solution, StrategyNode, StrategyLock, StudySession
+from .serializers import SolverConfigSerializer, SolutionSerializer, StrategyNodeSerializer, StrategyLockSerializer, StudySessionSerializer
 
 class AggregateReportView(APIView):
     def get(self, request):
@@ -49,11 +49,19 @@ class SolutionViewSet(viewsets.ModelViewSet):
         queryset = Solution.objects.all()
         rake = self.request.query_params.get('rake')
         stack_depth = self.request.query_params.get('stack_depth')
+        name = self.request.query_params.get('name')
         if rake is not None:
             queryset = queryset.filter(rake=rake)
         if stack_depth is not None:
             queryset = queryset.filter(stack_depth=stack_depth)
+        if name is not None:
+            queryset = queryset.filter(name__icontains=name)
         return queryset
+
+class SolverConfigViewSet(viewsets.ModelViewSet):
+    queryset = SolverConfig.objects.all()
+    serializer_class = SolverConfigSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
 class StrategyNodeViewSet(viewsets.ModelViewSet):
     queryset = StrategyNode.objects.all()

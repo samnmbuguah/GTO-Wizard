@@ -1,5 +1,10 @@
 from rest_framework import serializers
-from .models import Solution, StrategyNode, StrategyLock, StudySession
+from .models import SolverConfig, Solution, StrategyNode, StrategyLock, StudySession
+
+class SolverConfigSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SolverConfig
+        fields = '__all__'
 
 class SolutionSerializer(serializers.ModelSerializer):
     class Meta:
