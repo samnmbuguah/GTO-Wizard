@@ -10,6 +10,7 @@ const DashboardView: React.FC = () => {
   const [resolvedSolutionId, setResolvedSolutionId] = useState<string | null>(null);
   const [nodes, setNodes] = useState<StrategyNode[]>([]);
   const [loading, setLoading] = useState(true);
+  const [board, setBoard] = useState<string[]>([]);
   
   // Left Nav State
   const [activeTab, setActiveTab] = useState('SRP');
@@ -79,7 +80,19 @@ const DashboardView: React.FC = () => {
   }
 
   const handleCardToggle = (card: string) => {
-    console.log('Toggling card:', card);
+    setBoard(prev => 
+      prev.includes(card) 
+        ? prev.filter(c => c !== card) 
+        : (prev.length < 3 ? [...prev, card] : prev)
+    );
+  };
+
+  const handleReset = () => {
+    setBoard([]);
+    // Optionally reset filters to defaults if reset should affect everything
+    // setActiveTab('SRP');
+    // setActiveStack('100');
+    // setActivePosition('SB vs BB');
   };
 
   const tabs = ['SRP', '3 BET', '4 BET', 'HU'];
@@ -157,7 +170,10 @@ const DashboardView: React.FC = () => {
           
           <div className="flex items-center gap-3">
              <div className="w-[140px] h-[30px] bg-[#0d1f1f] rounded-[4px] border border-[#182628]"></div>
-             <button className="bg-[#465f61] text-white font-black px-5 py-1.5 rounded-[3px] hover:bg-[#003249] transition-colors text-xs uppercase tracking-wider">
+             <button 
+               onClick={handleReset}
+               className="bg-[#465f61] text-white font-black px-5 py-1.5 rounded-[3px] hover:bg-[#003249] transition-colors text-xs uppercase tracking-wider"
+             >
                RESET
              </button>
           </div>
@@ -165,8 +181,8 @@ const DashboardView: React.FC = () => {
 
         {/* Board Selector */}
         <BoardSelector
-          board={['Ah', 'Kh', 'Qh']}
-          onReset={() => console.log('Reset')}
+          board={board}
+          onReset={handleReset}
           onCardToggle={handleCardToggle}
         />
 
