@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import BoardSelector from '../components/BoardSelector';
 
@@ -26,5 +26,16 @@ describe('BoardSelector', () => {
     expect(diamonds.parentElement).toHaveClass('bg-[#457B9D]');
     expect(clubs.parentElement).toHaveClass('bg-[#327A00]');
     expect(spades.parentElement).toHaveClass('bg-[#182628]');
+  });
+
+  it('toggles card selection on click', () => {
+    const onCardToggle = vi.fn();
+    render(<BoardSelector board={[]} onReset={() => {}} onCardToggle={onCardToggle} />);
+    
+    // Multiple 'A' exist, take the first one (Hearts)
+    const aceHeart = screen.getAllByText('A')[0].parentElement;
+    aceHeart?.click();
+    
+    expect(onCardToggle).toHaveBeenCalledWith('Ah');
   });
 });

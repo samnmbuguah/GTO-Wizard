@@ -140,15 +140,15 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
           if (onHandSelect) onHandSelect(hand);
         }}
         className={`
-          relative w-full aspect-square border-[0.5px] border-[#182628] overflow-hidden flex flex-col group
-          highLevelHandSolution p-button p-component hover:opacity-80 transition-opacity
-          ${isSelected ? 'ring-2 ring-white z-10' : ''}
-          ${handIsLocked ? 'ring-2 ring-yellow-500 z-10' : ''}
+          relative w-full h-7 border-[0.1px] border-[#182628]/30 overflow-hidden flex flex-col group
+          hover:opacity-90 transition-opacity
+          ${isSelected ? 'ring-1 ring-white/50 z-10' : ''}
+          ${handIsLocked ? 'ring-1 ring-yellow-500/50 z-10' : ''}
         `}
         style={{ background: backgroundStyle, color: COLORS.text }}
         title={tooltipText}
       >
-        <span className="absolute inset-0 flex items-center justify-center z-10 w-full text-center text-[9px] sm:text-[10px] md:text-[11.5px] font-black uppercase tracking-tighter pointer-events-none drop-shadow-md leading-none">
+        <span className="absolute inset-0 flex items-center justify-center z-10 w-full text-center text-[9px] sm:text-[10px] md:text-[10.5px] font-bold uppercase tracking-tighter pointer-events-none drop-shadow-sm leading-none opacity-80">
           {hand}
         </span>
         
@@ -163,7 +163,7 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
 
   return (
     <div className="flex w-full h-full text-[#ccdbdc]">
-      <div className="flex-[2] mr-4 relative min-w-0 flex flex-col">
+      <div className={`flex-1 ${selectedHand ? 'mr-4' : ''} relative min-w-0 flex flex-col`}>
         {/* Grid Icons Toolbar */}
         <div className="flex justify-between items-center mb-1.5 px-0.5">
           <Shuffle className="w-3.5 h-3.5 text-[#7aa6da] cursor-pointer hover:text-white" />
@@ -173,8 +173,8 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
           </div>
         </div>
         
-        <div className="w-full flex-1 relative">
-          <div className="grid grid-cols-13 w-full h-full border border-[#182628]">
+        <div className="w-full relative">
+          <div className="grid grid-cols-13 w-full h-auto border border-[#182628]/20 bg-[#182628]/10 rounded-sm">
             {ranks.map(rankRow => (
               <React.Fragment key={rankRow}>
                 {ranks.map(rankCol => renderCell(rankRow, rankCol))}
@@ -184,55 +184,61 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
         </div>
       </div>
 
-      <div className="flex-1 min-w-[200px] flex flex-col items-center justify-center p-4 bg-[#0d1f1f] rounded text-[#ccdbdc] h-full shadow-inner relative border border-[#182628]">
-        {selectedHand && selectedNode ? (
-          <div className="w-full flex-1 flex flex-col h-full">
-            <div className="flex items-center justify-center mb-10 mt-6 relative w-full">
-              <Maximize2 className="w-6 h-6 absolute left-0 top-0 cursor-pointer hover:text-white" />
-              <h3 className="text-xl font-bold">{selectedHand} strategy</h3>
-               <div className="absolute right-0 top-0 flex gap-2 items-center">
-                 <RotateCcw className="w-4 h-4 cursor-pointer hover:text-white mr-1" />
-                 <button onClick={() => toggleLock(selectedHand, selectedNode)} className="cursor-pointer hover:text-white p-0 bg-transparent border-none">
-                    {isLocked ? <Lock className="w-4 h-4 text-yellow-500" /> : <Unlock className="w-4 h-4 text-yellow-500" />}
-                 </button>
-                 <SettingsIcon className="w-4 h-4 cursor-pointer hover:text-white" />
-                 <MoreHorizontal className="w-4 h-4 cursor-pointer hover:text-white ml-1" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-8 mt-10 w-full text-center">
-              <div>
-                <p className="text-[14px] font-bold uppercase tracking-wider mb-2">Weighting</p>
-                <p className="text-xl font-black">14.2%</p>
-              </div>
-              <div>
-                <p className="text-[14px] font-bold uppercase tracking-wider mb-2">EV</p>
-                <p className="text-xl font-black">+5.24 BB</p>
-              </div>
-            </div>
-            
-            <div className="space-y-4 mt-12 w-full px-4">
-              {Object.entries(selectedNode.actions || {}).map(([action, freq]) => (
-                <div key={action} className="space-y-1 w-full">
-                  <div className="flex justify-between text-xs font-bold uppercase border-b border-[#2d393b] pb-1">
-                    <span>{action}</span>
-                    <span className="font-black text-white">{(freq * 100).toFixed(1)}%</span>
-                  </div>
+      {selectedHand && (
+        <div className="flex-1 max-w-[400px] min-w-[300px] flex flex-col items-center justify-center p-4 bg-[#0d1f1f] rounded text-[#ccdbdc] h-full shadow-inner relative border border-[#182628]">
+          {selectedNode ? (
+            <div className="w-full flex-1 flex flex-col h-full">
+              <div className="flex items-center justify-center mb-10 mt-6 relative w-full">
+                <Maximize2 className="w-6 h-6 absolute left-0 top-0 cursor-pointer hover:text-white" />
+                <h3 className="text-xl font-bold">{selectedHand} strategy</h3>
+                 <div className="absolute right-0 top-0 flex gap-2 items-center">
+                   <RotateCcw className="w-4 h-4 cursor-pointer hover:text-white mr-1" />
+                   <button 
+                     onClick={() => toggleLock(selectedHand!, selectedNode)} 
+                     aria-label={isLocked ? "Unlock action" : "Lock action"}
+                     className="cursor-pointer hover:text-white p-0 bg-transparent border-none"
+                   >
+                      {isLocked ? <Lock className="w-4 h-4 text-yellow-500" /> : <Unlock className="w-4 h-4 text-yellow-500" />}
+                   </button>
+                   <SettingsIcon className="w-4 h-4 cursor-pointer hover:text-white" />
+                   <MoreHorizontal className="w-4 h-4 cursor-pointer hover:text-white ml-1" />
                 </div>
-              ))}
+              </div>
+
+              <div className="grid grid-cols-2 gap-8 mt-10 w-full text-center">
+                <div>
+                  <p className="text-[14px] font-bold uppercase tracking-wider mb-2">Weighting</p>
+                  <p className="text-xl font-black">14.2%</p>
+                </div>
+                <div>
+                  <p className="text-[14px] font-bold uppercase tracking-wider mb-2">EV</p>
+                  <p className="text-xl font-black">+5.24 BB</p>
+                </div>
+              </div>
+              
+              <div className="space-y-4 mt-12 w-full px-4">
+                {Object.entries(selectedNode.actions || {}).map(([action, freq]) => (
+                  <div key={action} className="space-y-1 w-full">
+                    <div className="flex justify-between text-xs font-bold uppercase border-b border-[#2d393b] pb-1">
+                      <span>{action}</span>
+                      <span className="font-black text-white">{(freq * 100).toFixed(1)}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full text-[#7aa6da] w-full gap-4 opacity-50">
-             <Maximize2 className="w-10 h-10 transform rotate-45" />
-             <p className="text-[13px] font-bold uppercase tracking-widest text-center">Select a hand to view strategy</p>
-          </div>
-        )}
-        
-        <button className="absolute bottom-4 right-4 bg-transparent border border-[#2d393b] rounded p-2 hover:bg-[#2d393b] hover:text-white transition-colors cursor-pointer">
-          <SettingsIcon className="w-4 h-4" />
-        </button>
-      </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-[#7aa6da] w-full gap-4 opacity-50">
+               <Maximize2 className="w-10 h-10 transform rotate-45" />
+               <p className="text-[13px] font-bold uppercase tracking-widest text-center">Loading strategy data...</p>
+            </div>
+          )}
+          
+          <button className="absolute bottom-4 right-4 bg-transparent border border-[#2d393b] rounded p-2 hover:bg-[#2d393b] hover:text-white transition-colors cursor-pointer">
+            <SettingsIcon className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };
