@@ -80,7 +80,9 @@ export const DashboardLayout = ({ children }: { children?: React.ReactNode }) =>
               className={`flex items-center gap-2 px-3 py-1 rounded transition-all ${isLibraryOpen ? 'bg-[#ccdbdc]/10 text-white' : 'text-[#a1b4d9] hover:text-[#ccdbdc]'}`}
             >
               <Database className="w-3 h-3 text-[#7aa6da]" />
-              <span className="uppercase tracking-widest font-black text-[10px]">Select Library</span>
+              <span className="uppercase tracking-widest font-black text-[10px] max-w-[200px] truncate">
+                {solutions.find(s => String(s.id) === String(activeSolutionId))?.name || "Select Library"}
+              </span>
               <ChevronDown className={`w-3 h-3 transition-transform ${isLibraryOpen ? 'rotate-180' : ''}`} />
             </button>
 
