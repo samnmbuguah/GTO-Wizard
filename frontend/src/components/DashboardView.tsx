@@ -2,6 +2,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import StrategyMatrix from './StrategyMatrix';
 import BoardSelector from './BoardSelector';
+import SummaryStats from './SummaryStats';
+import { 
+  Loader2,
+  AlertCircle,
+  RefreshCw,
+  Database
+} from 'lucide-react';
 import { apiClient } from '../api/client';
 import type { StrategyNode, Solution } from '../types/poker';
 
@@ -68,6 +75,19 @@ const DashboardView: React.FC = () => {
   const [activeTab, setActiveTab] = useState('SRP');
   const [activeStack, setActiveStack] = useState('100');
   const [activePosition, setActivePosition] = useState('SB vs BB');
+  const [useAnte, setUseAnte] = useState(false);
+  const [gameType] = useState('6-Max');
+  const [error, setError] = useState<string | null>(null);
+
+  const getFlopTexture = (cards: string[]) => {
+    if (cards.length < 3) return '';
+    const ranks = cards.map(c => c[0]);
+    if (new Set(ranks).size < ranks.length) return 'Paired';
+    const isHigh = cards.some(c => ['A','K','Q','J','T'].includes(c[0]));
+    const isMonotone = cards.every(c => c.slice(-1) === cards[0].slice(-1));
+    if (isMonotone) return 'Monotone';
+    return isHigh ? 'High' : 'Low';
+  };
 
   // Handle Initial Load (solutionId or default) vs Dynamic Nav Clicks
   useEffect(() => {
@@ -75,10 +95,18 @@ const DashboardView: React.FC = () => {
       // Always query backend using current active state
       const queryParams = new URLSearchParams();
       queryParams.append('stack_depth', activeStack);
-      if (activePosition) {
-        // use URL encoded mapping just in case
-        queryParams.append('name', activePosition.split(' vs ')[0]); // simplified to "SB" etc.
+      if (useAnte) {
+        queryParams.append('ante__gt', '0');
+      } else {
+        queryParams.append('ante', '0');
       }
+      queryParams.append('game_type', gameType);
+
+      if (activePosition) {
+        queryParams.append('name', activePosition.split(' vs ')[0]); 
+      }
+
+      queryParams.append('flop_texture', getFlopTexture(board));
       
       try {
         const solutions = await apiClient.get<Solution[]>(`/solutions/?${queryParams.toString()}`);
@@ -97,7 +125,7 @@ const DashboardView: React.FC = () => {
     };
 
     resolveId();
-  }, [activeStack, activePosition, activeTab, solutionId]);
+  }, [activeStack, activePosition, activeTab, solutionId, useAnte, gameType, board]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -108,6 +136,7 @@ const DashboardView: React.FC = () => {
       }
       try {
         setFetchingData(true);
+        setError(null);
         const [_, nodesData] = await Promise.all([
           apiClient.get<Solution>(`/solutions/${resolvedSolutionId}/`),
           apiClient.get<StrategyNode[]>('/nodes/', { solution_id: resolvedSolutionId, path: 'root' })
@@ -115,6 +144,7 @@ const DashboardView: React.FC = () => {
         setNodes(nodesData);
       } catch (err) {
         console.error('Failed to fetch dashboard data:', err);
+        setError('Failed to load strategy data. Please check your connection or try again.');
       } finally {
         setFetchingData(false);
         setLoading(false);
@@ -122,6 +152,15 @@ const DashboardView: React.FC = () => {
     };
     fetchData();
   }, [resolvedSolutionId]);
+
+  const handleRetry = () => {
+    // Re-trigger the resolveId by toggling a hidden state or just re-resolving
+    // Actually, setting error to null will re-trigger effects if we set it up right, 
+    // but better to just re-fetch.
+    setResolvedSolutionId(prev => (prev ? prev : null)); // Simple nudge
+    localStorage.removeItem('gto_active_solution'); // Force a fresh start
+    window.location.reload(); // Simple brute force for now as requested for "graceful" but quick
+  };
 
   const tabs = useMemo(() => Object.keys(TAB_CONFIG['100']), []);
   const stacks = ['100', '150'];
@@ -213,6 +252,18 @@ const DashboardView: React.FC = () => {
             ))}
           </div>
           
+          {/* Ante Toggle */}
+          <div className="flex flex-col gap-2 w-[35px]">
+            <button 
+              aria-label="Toggle Ante"
+              onClick={() => setUseAnte(!useAnte)}
+              className={`flex flex-col items-center justify-center rounded py-2 transition-colors text-[10px] font-black
+                ${useAnte ? 'bg-[#7aa6da] text-[#182628]' : 'bg-[#182628] text-[#7aa6da] border border-[#7aa6da]/20 hover:bg-[#7aa6da]/10'}`}
+            >
+              <span>A</span><span>N</span><span>T</span><span>E</span>
+            </button>
+          </div>
+          
           {/* Positions */}
           <div className="flex-1 flex flex-col gap-[7px]">
             {currentTabConfig.categories.map((category, i) => (
@@ -248,26 +299,39 @@ const DashboardView: React.FC = () => {
         {/* Top Toolbar */}
         <div className="flex w-full justify-between items-center pb-3 px-1">
           <div className="flex items-center gap-2">
-            <button className="bg-[#2d393b] text-[#ccdbdc] font-bold px-3 py-1 rounded-[3px] text-xs hover:bg-[#465f61] transition-colors border border-[#182628]">
-              root
-            </button>
+            {/* Removed root button to match reference */}
           </div>
 
-          <div className="flex flex-col items-center gap-0">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center bg-[#2a0a0a] rounded-md px-3 py-1.5 border border-red-900/30 gap-4">
+            <div className="flex flex-col items-start leading-none">
               <button 
                 onClick={handlePreflopClick}
-                className="bg-[#0d1f1f] text-[#7aa6da] px-2 py-0.5 rounded text-[10px] font-black tracking-widest uppercase border border-[#7aa6da]/20 hover:bg-[#7aa6da]/10 transition-colors"
+                className="text-red-500 font-black text-sm hover:text-red-400 transition-colors uppercase tracking-tight"
               >
                 PREFLOP
               </button>
-              <span className="bg-[#003249] text-white px-3 py-0.5 rounded text-xs font-black uppercase">BTN</span>
+              <span className="text-[9px] font-bold text-red-500/60 uppercase tracking-tighter mt-0.5">SRP • 2.5 BB</span>
             </div>
-            <span className="text-[10px] font-bold text-[#7aa6da]/80 mt-0.5 tracking-tight">3BET = 7.5 BB</span>
+            <div className="w-[1px] h-6 bg-red-900/30"></div>
+            <span className="text-red-500 font-black text-sm uppercase">{activePosition.split(' vs ')[0] || 'UTG'}</span>
           </div>
           
           <div className="flex items-center gap-3">
-             <div className="w-[140px] h-[30px] bg-[#0d1f1f] rounded-[4px] border border-[#182628]"></div>
+             {/* Selected Cards display */}
+             <div className="flex gap-1 h-[30px] items-center px-2 bg-[#0d1f1f] rounded-[4px] border border-[#182628]">
+                {board.map((card, idx) => {
+                  const suit = card.slice(-1);
+                  const rank = card.slice(0, -1);
+                  const isRed = ['h', 'd'].includes(suit.toLowerCase());
+                  return (
+                    <div key={idx} className={`flex items-center justify-center bg-white rounded-sm px-1 min-w-[24px] h-[22px] font-black text-[11px] ${isRed ? 'text-red-600' : 'text-black'}`}>
+                      {rank.toUpperCase()}{suit.toLowerCase() === 'h' ? '♥' : suit.toLowerCase() === 'd' ? '♦' : suit.toLowerCase() === 's' ? '♠' : '♣'}
+                    </div>
+                  );
+                })}
+                {board.length === 0 && <span className="text-[10px] text-[#7aa6da]/30 font-bold italic">No Board</span>}
+             </div>
+             
              <button 
                onClick={handleReset}
                className="bg-[#465f61] text-white font-black px-5 py-1.5 rounded-[3px] hover:bg-[#003249] transition-colors text-xs uppercase tracking-wider"
@@ -286,16 +350,60 @@ const DashboardView: React.FC = () => {
 
         {/* Strategy Matrix Wrapper */}
         <div className="w-full flex-1 min-h-[500px] bg-[#2d393b] rounded-[5px] p-2 mt-3 flex flex-col relative shadow-lg overflow-hidden">
-          {/* Internal Loading Overlay */}
           {fetchingData && (
-            <div className="absolute inset-0 z-10 bg-[#182628]/40 backdrop-blur-[2px] flex items-center justify-center">
-              <div className="w-8 h-8 border-3 border-[#7aa6da] border-t-transparent rounded-full animate-spin"></div>
+            <div className="absolute inset-0 z-10 bg-[#182628]/60 backdrop-blur-[4px] flex flex-col items-center justify-center gap-4">
+              <Loader2 className="w-10 h-10 text-[#7aa6da] animate-spin" />
+              <p className="text-[13px] font-black uppercase tracking-widest text-[#7aa6da]">Syncing Solved Data...</p>
+            </div>
+          )}
+
+          {error && (
+            <div className="absolute inset-0 z-20 bg-[#182628]/95 backdrop-blur-[8px] flex flex-col items-center justify-center p-8 text-center gap-6">
+              <AlertCircle className="w-16 h-16 text-red-500 mb-2" />
+              <div className="space-y-2">
+                <h3 className="text-xl font-black text-white uppercase tracking-tight">Data Sync Error</h3>
+                <p className="text-[#a1b4d9] text-sm max-w-xs mx-auto">{error}</p>
+              </div>
+              <button 
+                onClick={handleRetry}
+                className="flex items-center gap-2 bg-[#7aa6da] hover:bg-[#5a86ba] text-[#182628] font-black px-6 py-3 rounded-[4px] transition-all transform hover:scale-105 active:scale-95 shadow-lg uppercase text-xs tracking-widest"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Reload Workspace
+              </button>
             </div>
           )}
           
-          <div className="w-full flex-1 overflow-hidden rounded">
-             <StrategyMatrix nodes={nodes} onHandSelect={(hand) => console.log('Selected:', hand)} />
-          </div>
+          {!resolvedSolutionId && !fetchingData && !error ? (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-[#0d1f1f]/30 rounded-[5px] border border-dashed border-[#7aa6da]/20">
+              <Database className="w-16 h-16 text-[#7aa6da]/20 mb-4" />
+              <h3 className="text-xl font-black text-white uppercase tracking-tight mb-2">No Solution Found</h3>
+              <p className="text-[#a1b4d9] text-sm max-w-sm mx-auto leading-relaxed">
+                We couldn't find a matching solver solution for <strong>{activeStack}BB {activeTab}</strong> in the <strong>{activePosition}</strong> spot.
+              </p>
+              <div className="mt-6 flex gap-4">
+                <button 
+                  onClick={() => setActiveStack('100')}
+                  className="px-4 py-2 bg-[#182628] text-[#7aa6da] font-bold text-[10px] uppercase rounded hover:bg-[#2d393b] transition-colors"
+                >
+                  Try 100BB
+                </button>
+                <button 
+                  onClick={() => setActiveTab('SRP')}
+                  className="px-4 py-2 bg-[#182628] text-[#7aa6da] font-bold text-[10px] uppercase rounded hover:bg-[#2d393b] transition-colors"
+                >
+                  Try SRP
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <SummaryStats nodes={nodes} />
+              <div className="w-full flex-1 overflow-hidden rounded">
+                 <StrategyMatrix nodes={nodes} onHandSelect={(hand) => console.log('Selected:', hand)} />
+              </div>
+            </>
+          )}
           <div className="absolute bottom-1 right-2">
             <button className="text-[#a1b4d9] hover:text-white transition-colors p-2 bg-transparent pointer-cursor border-none">
               <i className="fa-solid fa-gear text-[20px]"></i>

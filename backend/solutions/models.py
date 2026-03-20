@@ -18,6 +18,8 @@ class SolverConfig(models.Model):
 class Solution(models.Model):
     name = models.CharField(max_length=255)
     rake = models.FloatField(default=0.0)
+    ante = models.FloatField(default=0.0)
+    game_type = models.CharField(max_length=50, default='6-Max')
     stack_depth = models.IntegerField(default=100)
     flop_texture = models.CharField(max_length=50, default='Rainbow', choices=[
         ('High', 'High Board'),
@@ -34,6 +36,7 @@ class Solution(models.Model):
     class Meta:
         indexes = [
             GinIndex(fields=['config'], name='solution_config_gin'),
+            models.Index(fields=['game_type', 'stack_depth', 'ante']),
         ]
 
     def __str__(self):

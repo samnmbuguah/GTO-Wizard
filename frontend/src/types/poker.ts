@@ -16,6 +16,8 @@ export interface StrategyNode {
 export interface Solution {
   id: number;
   name: string;
+  ante?: number;
+  game_type?: string;
   rake?: number;
   stack_depth?: number;
   solver_config_id?: number;

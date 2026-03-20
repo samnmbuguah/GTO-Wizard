@@ -1,0 +1,14 @@
+{
+  "metadata": {
+    "name": "6-Max NL500 PS Ante (Test)",
+    "game_type": "6-Max",
+    "stack_depth": 100,
+    "rake": 0.05,
+    "ante": 0.1
+  },
+  "nodes": [
+    { "path": "root", "hand": "AA", "actions": {"Raise": 0.9, "Call": 0.1}, "ev": 15.2, "equity": 0.88 },
+    { "path": "root", "hand": "KK", "actions": {"Raise": 0.85, "Call": 0.15}, "ev": 12.1, "equity": 0.82 },
+    { "path": "root", "hand": "72o", "actions": {"Fold": 1.0}, "ev": -1.2, "equity": 0.25 }
+  ]
+}

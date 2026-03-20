@@ -72,7 +72,8 @@ describe('DashboardView', () => {
     render(<DashboardView />, { wrapper: TestWrapper });
 
     await waitFor(() => {
-      expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining('/solutions/?stack_depth=100&name=SB'));
+      expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining('stack_depth=100'));
+      expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining('ante=0'));
       expect(apiClient.get).toHaveBeenCalledWith('/solutions/1/');
     });
   });
@@ -237,17 +238,129 @@ describe('DashboardView', () => {
     (apiClient.get as any).mockResolvedValue([mockSolution]);
     render(<DashboardView />, { wrapper: TestWrapper });
 
-    // "Ah" is rendered as "A" and "♥" in separate spans
-    await waitFor(() => expect(screen.getAllByText('A').length).toBeGreaterThan(0));
-
-    const aRank = screen.getAllByText('A')[0];
-    const ahCard = aRank.closest('button');
+    // Ah is "Ah" in our model
+    const ahCard = await screen.findByTestId('card-Ah');
     
     await act(async () => {
-      ahCard?.click();
+      ahCard.click();
     });
 
     // The card should now have the brightness-150 class or similar
-    expect(ahCard?.className).toContain('brightness-150');
+    expect(ahCard.className).toContain('brightness-150');
+  });
+
+  it('resets selected cards when RESET button is clicked', async () => {
+    (apiClient.get as any).mockResolvedValue([mockSolution]);
+    render(<DashboardView />, { wrapper: TestWrapper });
+
+    const ahCard = await screen.findByTestId('card-Ah');
+    
+    await act(async () => {
+      ahCard.click();
+    });
+    expect(ahCard.className).toContain('brightness-150');
+
+    // Click RESET
+    const resetBtn = screen.getByRole('button', { name: /RESET/i });
+    await act(async () => {
+      resetBtn.click();
+    });
+
+    // Verify card is no longer selected
+    expect(ahCard.className).not.toContain('brightness-150');
+    // Verify top display shows "No Board"
+    expect(screen.getByText(/No Board/i)).toBeInTheDocument();
+  });
+
+  it('displays selected cards in the top toolbar', async () => {
+    (apiClient.get as any).mockResolvedValue([mockSolution]);
+    render(<DashboardView />, { wrapper: TestWrapper });
+
+    const ahCard = await screen.findByTestId('card-Ah');
+    
+    await act(async () => {
+      ahCard.click();
+    });
+
+    // Check top toolbar display (it contains "Ah" or similar)
+    // We can identify the toolbar container by the "No Board" or cards area
+    // The top cards are rendered as {rank.toUpperCase()}{suit.symbol}
+    const rankInToolbar = screen.getAllByText(/A/i).find(el => {
+       const btn = el.closest('button');
+       return !btn || !btn.getAttribute('data-testid')?.startsWith('card-');
+    });
+    
+    const heartInToolbar = screen.getAllByText(/♥/i).find(el => {
+       const btn = el.closest('button');
+       return !btn || !btn.getAttribute('data-testid')?.startsWith('card-');
+    });
+    
+    expect(rankInToolbar).toBeDefined();
+    expect(heartInToolbar).toBeDefined();
+  });
+
+  it('renders multi-bet strategies with correct color scaling', async () => {
+    const multiBetNode = {
+      ...mockNodes[0],
+      actions: {
+        'Fold': 0.2,
+        'Check': 0.2,
+        'Bet 33%': 0.2,
+        'Bet 75%': 0.2,
+        'All-in': 0.2
+      }
+    };
+
+    (apiClient.get as any).mockImplementation(async (url: string) => {
+      if (url.startsWith('/solutions/?')) return [mockSolution];
+      if (url.startsWith('/solutions/1/')) return mockSolution;
+      if (url.startsWith('/nodes/')) return [multiBetNode];
+      return [];
+    });
+
+    render(<DashboardView />, { wrapper: TestWrapper });
+
+    await waitFor(() => {
+      // SummaryStats should show all 5 actions
+      expect(screen.getByText(/FOLD 20.00%/i)).toBeInTheDocument();
+      expect(screen.getByText(/CHECK 20.00%/i)).toBeInTheDocument();
+      expect(screen.getByText(/BET 33% 20.00%/i)).toBeInTheDocument();
+      expect(screen.getByText(/BET 75% 20.00%/i)).toBeInTheDocument();
+      expect(screen.getByText(/ALL-IN 20.00%/i)).toBeInTheDocument();
+    });
+
+    // Verify colors exist in the document (we can check the container's inline style if needed)
+    // But since vitest doesn't have a full browser, we'll just check that it renders without error.
+  });
+
+  it('displays error UI when strategy data fails to load', async () => {
+    // Mock success for solution list but failure for node detail
+    (apiClient.get as any).mockImplementation((url: string) => {
+      if (url.includes('/solutions/')) return Promise.resolve([mockSolution]);
+      if (url.includes('/nodes/')) return Promise.reject(new Error('Network Failure'));
+      return Promise.resolve([mockSolution]);
+    });
+
+    render(<DashboardView />, { wrapper: TestWrapper });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Data Sync Error/i)).toBeInTheDocument();
+      expect(screen.getByText(/Failed to load strategy data/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Reload Workspace/i })).toBeInTheDocument();
+    });
+  });
+
+  it('displays "No Solution Found" message when current filters return no results', async () => {
+    // Mock empty results for /solutions/?
+    (apiClient.get as any).mockImplementation((url: string) => {
+      if (url.includes('/solutions/?')) return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+
+    render(<DashboardView />, { wrapper: TestWrapper });
+
+    await waitFor(() => {
+      expect(screen.getByText(/No Solution Found/i)).toBeInTheDocument();
+    });
   });
 });

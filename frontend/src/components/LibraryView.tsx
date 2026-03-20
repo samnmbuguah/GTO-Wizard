@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Database, Search, Percent, Layers, ChevronRight, Info } from 'lucide-react';
+import { Database, Search, Percent, Layers, ChevronRight, Info, Upload, X, FileJson, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { Solution } from '../types/poker';
 import { apiClient } from '../api/client';
@@ -11,6 +11,10 @@ const LibraryView: React.FC = () => {
   const [search, setSearch] = useState('');
   const [rakeFilter, setRakeFilter] = useState<string>('');
   const [stackFilter, setStackFilter] = useState<string>('');
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
 
   const fetchSolutions = useCallback(async () => {
     try {
@@ -31,6 +35,30 @@ const LibraryView: React.FC = () => {
     fetchSolutions();
   }, [fetchSolutions]);
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploading(true);
+      setUploadError(null);
+      setUploadSuccess(false);
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      await apiClient.post('/solutions/upload/', formData);
+      
+      setUploadSuccess(true);
+      fetchSolutions();
+      setTimeout(() => setShowUploadModal(false), 2000);
+    } catch (err: any) {
+      setUploadError(err.message || 'Failed to upload solution');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const filteredSolutions = solutions.filter(s => 
     s.name.toLowerCase().includes(search.toLowerCase())
   );
@@ -43,8 +71,17 @@ const LibraryView: React.FC = () => {
           <h2 className="text-3xl font-black tracking-tight">Solution Library</h2>
           <p className="text-muted text-sm mt-1 font-medium italic">Powered by Private Pio-Style Instant Rendering</p>
         </div>
-        
-        <div className="relative group flex-1 max-w-md">
+
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => setShowUploadModal(true)}
+            className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-indigo-600/20 transition-all transform hover:scale-105 active:scale-95"
+          >
+            <Upload className="w-4 h-4" />
+            Upload Solution
+          </button>
+          
+          <div className="relative group flex-1 min-w-[300px]">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted group-focus-within:text-indigo-500 transition-colors" />
           <input 
             type="text" 
@@ -55,6 +92,7 @@ const LibraryView: React.FC = () => {
           />
         </div>
       </div>
+    </div>
 
       {/* Advanced Filters Bar */}
       <div className="flex flex-wrap items-center gap-4 bg-card/60 p-4 rounded-3xl border border-border backdrop-blur-md">
@@ -152,6 +190,67 @@ const LibraryView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Upload Modal */}
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-card w-full max-w-md rounded-[2.5rem] border border-border shadow-2xl p-8 relative overflow-hidden">
+            <button 
+              onClick={() => setShowUploadModal(false)}
+              className="absolute top-6 right-6 text-muted hover:text-white transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+
+            <div className="text-center space-y-4">
+              <div className="w-20 h-20 bg-indigo-500/10 rounded-3xl flex items-center justify-center text-indigo-500 mx-auto">
+                <FileJson className="w-10 h-10" />
+              </div>
+              <div>
+                <h3 className="text-2xl font-black">Import Solver Solution</h3>
+                <p className="text-muted text-sm px-4">Upload a .zip package containing metadata.json and nodes.json (SIF v1.0)</p>
+              </div>
+
+              <div className="pt-6">
+                <label className={`
+                  flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-[2rem] cursor-pointer transition-all
+                  ${uploading ? 'bg-background/50 border-indigo-500/50 pointer-events-none' : 'hover:bg-indigo-500/5 border-border hover:border-indigo-500'}
+                  ${uploadSuccess ? 'border-emerald-500 bg-emerald-500/5' : ''}
+                `}>
+                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                    {uploading ? (
+                      <>
+                        <Loader2 className="w-10 h-10 text-indigo-500 animate-spin mb-4" />
+                        <p className="text-sm font-bold text-indigo-500 uppercase tracking-widest">Processing Data...</p>
+                      </>
+                    ) : uploadSuccess ? (
+                      <>
+                        <div className="w-12 h-12 bg-emerald-500 text-white rounded-full flex items-center justify-center mb-4">
+                          <Database className="w-6 h-6" />
+                        </div>
+                        <p className="text-sm font-bold text-emerald-500 uppercase tracking-widest">Import Success!</p>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-10 h-10 text-muted mb-4 group-hover:text-indigo-500 transition-colors" />
+                        <p className="text-sm font-bold uppercase tracking-widest">Click to upload .zip</p>
+                        <p className="text-xs text-muted mt-2">Max file size: 50MB</p>
+                      </>
+                    )}
+                  </div>
+                  <input type="file" className="hidden" accept=".zip" onChange={handleFileUpload} />
+                </label>
+              </div>
+
+              {uploadError && (
+                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-500 text-xs font-bold animate-in slide-in-from-top-2">
+                  {uploadError}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

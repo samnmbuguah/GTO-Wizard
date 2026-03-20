@@ -4,6 +4,9 @@ from rest_framework.response import Response
 from django.db.models import Avg, Sum
 from .models import SolverConfig, Solution, StrategyNode, StrategyLock, StudySession
 from .serializers import SolverConfigSerializer, SolutionSerializer, StrategyNodeSerializer, StrategyLockSerializer, StudySessionSerializer
+from .utils import process_sif_upload
+from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser
 
 class AggregateReportView(APIView):
     def get(self, request):
@@ -50,13 +53,42 @@ class SolutionViewSet(viewsets.ModelViewSet):
         rake = self.request.query_params.get('rake')
         stack_depth = self.request.query_params.get('stack_depth')
         name = self.request.query_params.get('name')
+        ante = self.request.query_params.get('ante')
+        ante_gt = self.request.query_params.get('ante__gt')
+        game_type = self.request.query_params.get('game_type')
+        flop_texture = self.request.query_params.get('flop_texture')
+
         if rake is not None:
             queryset = queryset.filter(rake=rake)
         if stack_depth is not None:
             queryset = queryset.filter(stack_depth=stack_depth)
+        if flop_texture is not None:
+            queryset = queryset.filter(flop_texture=flop_texture)
         if name is not None:
             queryset = queryset.filter(name__icontains=name)
+        if ante is not None:
+            queryset = queryset.filter(ante=ante)
+        if ante_gt is not None:
+            queryset = queryset.filter(ante__gt=ante_gt)
+        if game_type is not None:
+            queryset = queryset.filter(game_type=game_type)
         return queryset
+
+    @action(detail=False, methods=['post'], parser_classes=[MultiPartParser])
+    def upload(self, request):
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            return Response({"error": "No file uploaded"}, status=400)
+        
+        try:
+            solution, node_count = process_sif_upload(file_obj)
+            return Response({
+                "message": "Successfully imported solution",
+                "solution_id": solution.id,
+                "node_count": node_count
+            })
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
 
 class SolverConfigViewSet(viewsets.ModelViewSet):
     queryset = SolverConfig.objects.all()

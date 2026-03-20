@@ -27,13 +27,39 @@ interface StrategyMatrixProps {
 
 const ranks = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2'];
 
-// Color constants from reference
+// Color constants from reference and GTO patterns
 const COLORS = {
-  green: '#327A00', // Call
+  green: '#327A00', // Call/Check
   blue: '#457B9D', // Fold
-  red: '#B80F0A', // Raise
+  red: '#B80F0A', // Standard Raise
+  darkRed: '#7a1414', // Large Raise/All-in
+  lightRed: '#e95c5c', // Small Bet
   gray: 'rgb(87, 97, 98)',
   text: 'rgb(204, 219, 220)'
+};
+
+/**
+ * Maps an action name to a specific color.
+ * Supports "Bet 33%", "Raise 2x", "All-in", "Check/Call", etc.
+ */
+export const getActionColor = (action: string): string => {
+  const lower = action.toLowerCase();
+  if (lower.includes('fold')) return COLORS.blue;
+  if (lower.includes('call') || lower.includes('check')) return COLORS.green;
+  
+  // Bets and Raises
+  if (lower.includes('all-in') || lower.includes('ai') || lower.includes('shove')) return COLORS.darkRed;
+  if (lower.includes('raise') || lower.includes('bet')) {
+    // Try to extract size if present (e.g. "Bet 33%")
+    const match = lower.match(/(\d+)/);
+    if (match) {
+      const size = parseInt(match[0]);
+      if (size < 50) return COLORS.lightRed;
+      if (size >= 100) return COLORS.darkRed;
+    }
+    return COLORS.red;
+  }
+  return COLORS.gray;
 };
 
 const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) => {
@@ -93,44 +119,38 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
     const handIsLocked = !!locks[hand];
     
     // Default actions if no GTO data
-    const actions = node?.actions || { fold: 1.0 };
+    const actions = node?.actions || {};
+    const actionEntries = Object.entries(actions).sort((a, b) => {
+      // Custom sort: Fold first, then Check/Call, then Raises by size
+      const order = (name: string) => {
+        const l = name.toLowerCase();
+        if (l.includes('fold')) return 0;
+        if (l.includes('check') || l.includes('call')) return 1;
+        return 2;
+      };
+      return order(a[0]) - order(b[0]);
+    });
     
-    // Calculate gradient based on action frequencies
-    const foldFreq = (actions.fold ?? actions.Fold) || 0;
-    const callFreq = (actions.call ?? actions.Call) || 0;
-    const raiseFreq = (actions.raise ?? actions.Raise) || 0;
-    
-    const foldPct = foldFreq * 100;
-    const callPct = callFreq * 100;
-    const raisePct = raiseFreq * 100;
-
     let gradientStops: string[] = [];
     let currentPct = 0;
-    if (raisePct > 0) {
-      gradientStops.push(`${COLORS.red} ${currentPct}%`, `${COLORS.red} ${currentPct + raisePct}%`);
-      currentPct += raisePct;
-    }
-    if (callPct > 0) {
-      gradientStops.push(`${COLORS.green} ${currentPct}%`, `${COLORS.green} ${currentPct + callPct}%`);
-      currentPct += callPct;
-    }
-    if (foldPct > 0) {
-      gradientStops.push(`${COLORS.blue} ${currentPct}%`, `${COLORS.blue} ${currentPct + foldPct}%`);
-    }
+
+    actionEntries.forEach(([action, freq]) => {
+      const pct = freq * 100;
+      if (pct > 0) {
+        const color = getActionColor(action);
+        gradientStops.push(`${color} ${currentPct}%`, `${color} ${currentPct + pct}%`);
+        currentPct += pct;
+      }
+    });
 
     const backgroundStyle = gradientStops.length > 0 
       ? `linear-gradient(to right, ${gradientStops.join(', ')})`
       : COLORS.gray;
     
     // Calculate tooltip text
-    let tooltipText = 'No folds';
-    if (foldFreq > 0) {
-      const totalFreq = foldFreq + callFreq + raiseFreq;
-      if (totalFreq > 0) {
-        const foldPercentage = (foldFreq / totalFreq * 100).toFixed(2);
-        tooltipText = `${foldPercentage}% fold`;
-      }
-    }
+    const tooltipText = actionEntries.length > 0 
+      ? actionEntries.map(([action, freq]) => `${action}: ${(freq * 100).toFixed(0)}%`).join(', ')
+      : 'No data';
     
     return (
       <button
@@ -229,8 +249,11 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-[#7aa6da] w-full gap-4 opacity-50">
-               <Maximize2 className="w-10 h-10 transform rotate-45" />
-               <p className="text-[13px] font-bold uppercase tracking-widest text-center">Loading strategy data...</p>
+               <div className="w-10 h-10 border-b-2 border-l-2 border-red-500/50 transform rotate-45 mb-2"></div>
+               <p className="text-[13px] font-bold uppercase tracking-widest text-center">
+                 {nodes && nodes.length === 0 ? "No solution found for this configuration" : "Loading strategy data..."}
+               </p>
+               <p className="text-[10px] text-[#7aa6da]/40 max-w-[200px] text-center">Try adjusting your Ante or Stack Depth settings on the left panel.</p>
             </div>
           )}
           

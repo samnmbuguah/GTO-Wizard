@@ -27,6 +27,7 @@ const BoardSelector: React.FC<BoardSelectorProps> = ({ board = [], onCardToggle 
             return (
               <button
                 key={card}
+                data-testid={`card-${card}`}
                 onClick={() => onCardToggle && onCardToggle(card)}
                 className={`
                   flex-1 flex items-center justify-center rounded-[2px] h-[32px] text-[15px] text-white font-bold transition-all cursor-pointer border-none
