@@ -1,15 +1,67 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import StrategyMatrix from './StrategyMatrix';
 import BoardSelector from './BoardSelector';
 import { apiClient } from '../api/client';
 import type { StrategyNode, Solution } from '../types/poker';
 
+interface TabCategory {
+  name?: string;
+  positions: string[];
+}
+
+interface TabConfig {
+  categories: TabCategory[];
+}
+
+const TAB_CONFIG: Record<string, Record<string, TabConfig>> = {
+  '100': {
+    'SRP': {
+      categories: [{ positions: ['SB vs BB', 'BTN vs BB', 'CO vs BB', 'MP vs BB', 'UTG vs BB', 'MP vs BTN', 'UTG vs BTN'] }]
+    },
+    '3 BET': {
+      categories: [
+        { positions: ['BB vs SB', 'BB vs BTN', 'BB vs CO', 'BB vs MP', 'BB vs UTG', 'SB vs BTN', 'SB vs CO', 'SB vs MP', 'SB vs UTG', 'BTN vs CO', 'BTN vs MP', 'BTN vs UTG', 'CO vs MP', 'CO vs UTG', 'MP vs UTG'] },
+        { name: 'SQUEEZE', positions: ['BB vs BTN', 'BB vs MP', 'SB vs BTN', 'SB vs MP'] }
+      ]
+    },
+    '4 BET': {
+      categories: [
+        { positions: ['SB vs BB', 'BTN vs BB', 'BTN vs SB', 'CO vs BB', 'CO vs SB', 'CO vs BTN', 'MP vs BB', 'MP vs SB', 'MP vs BTN', 'MP vs CO', 'UTG vs BTN', 'UTG vs CO'] },
+        { name: 'COLD 4 BET', positions: ['BB vs SB', 'BB vs BTN', 'BB vs CO', 'BTN vs CO'] }
+      ]
+    },
+    'HU': {
+      categories: [{ positions: ['SRP', '3 BET', '4 BET'] }]
+    }
+  },
+  '150': {
+    'SRP': {
+      categories: [] // Empty as per 150bb reference
+    },
+    '3 BET': {
+      categories: [
+        { positions: ['BB vs SB', 'BB vs BTN', 'BB vs CO', 'BB vs MP', 'BB vs UTG', 'SB vs BTN', 'SB vs CO', 'SB vs MP', 'SB vs UTG', 'BTN vs CO', 'BTN vs MP', 'BTN vs UTG', 'CO vs MP', 'CO vs UTG', 'MP vs UTG'] }
+      ]
+    },
+    '4 BET': {
+      categories: [
+        { positions: ['SB vs BB', 'BTN vs BB', 'BTN vs SB', 'CO vs BB', 'CO vs SB', 'CO vs BTN', 'MP vs BB', 'MP vs SB', 'MP vs BTN', 'MP vs CO', 'UTG vs BTN', 'UTG vs CO'] },
+        { name: 'COLD 4 BET', positions: ['BB vs SB', 'BB vs BTN', 'BB vs CO', 'BTN vs CO'] }
+      ]
+    },
+    'HU': {
+      categories: [{ positions: ['3 BET', '4 BET'] }]
+    }
+  }
+};
+
 const DashboardView: React.FC = () => {
   const { solutionId } = useParams<{ solutionId: string }>();
   const [resolvedSolutionId, setResolvedSolutionId] = useState<string | null>(null);
   const [nodes, setNodes] = useState<StrategyNode[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchingData, setFetchingData] = useState(false);
   const [board, setBoard] = useState<string[]>([]);
   
   // Left Nav State
@@ -55,7 +107,7 @@ const DashboardView: React.FC = () => {
         return;
       }
       try {
-        setLoading(true);
+        setFetchingData(true);
         const [_, nodesData] = await Promise.all([
           apiClient.get<Solution>(`/solutions/${resolvedSolutionId}/`),
           apiClient.get<StrategyNode[]>('/nodes/', { solution_id: resolvedSolutionId, path: 'root' })
@@ -64,20 +116,40 @@ const DashboardView: React.FC = () => {
       } catch (err) {
         console.error('Failed to fetch dashboard data:', err);
       } finally {
+        setFetchingData(false);
         setLoading(false);
       }
     };
     fetchData();
   }, [resolvedSolutionId]);
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh] gap-4 bg-[#00140f]">
-        <div className="w-12 h-12 border-4 border-[#7aa6da] border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-[#7aa6da] font-bold animate-pulse">Loading Solver Workspace...</p>
-      </div>
-    );
-  }
+  const tabs = useMemo(() => Object.keys(TAB_CONFIG['100']), []);
+  const stacks = ['100', '150'];
+  
+  const currentTabConfig = useMemo(() => TAB_CONFIG[activeStack]?.[activeTab] || { categories: [] }, [activeTab, activeStack]);
+
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    const config = TAB_CONFIG[activeStack]?.[tab];
+    if (config && config.categories.length > 0) {
+      setActivePosition(config.categories[0].positions[0]);
+    } else {
+      setActivePosition('');
+    }
+  };
+
+  const handleStackChange = (stack: string) => {
+    setActiveStack(stack);
+    const config = TAB_CONFIG[stack]?.[activeTab];
+    if (config && config.categories.length > 0) {
+      const allPositions = config.categories.flatMap(c => c.positions);
+      if (!allPositions.includes(activePosition)) {
+        setActivePosition(allPositions[0]);
+      }
+    } else {
+      setActivePosition('');
+    }
+  };
 
   const handleCardToggle = (card: string) => {
     setBoard(prev => 
@@ -89,15 +161,22 @@ const DashboardView: React.FC = () => {
 
   const handleReset = () => {
     setBoard([]);
-    // Optionally reset filters to defaults if reset should affect everything
-    // setActiveTab('SRP');
-    // setActiveStack('100');
-    // setActivePosition('SB vs BB');
   };
 
-  const tabs = ['SRP', '3 BET', '4 BET', 'HU'];
-  const stacks = ['100', '150'];
-  const positions = ['SB vs BB', 'BTN vs BB', 'CO vs BB', 'MP vs BB', 'UTG vs BB', 'MP vs BTN', 'UTG vs BTN'];
+  const handlePreflopClick = () => {
+    handleReset();
+    // Return to root preflop state
+    localStorage.removeItem('gto_active_solution');
+  };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] gap-4 bg-[#00140f]">
+        <div className="w-12 h-12 border-4 border-[#7aa6da] border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-[#7aa6da] font-bold animate-pulse">Loading Solver Workspace...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="h-[calc(100vh-50px)] grid grid-cols-[18vw_1fr] bg-[#00140f] overflow-hidden">
@@ -109,7 +188,7 @@ const DashboardView: React.FC = () => {
             <button 
               key={tab} 
               aria-label={`${tab} tab`}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => handleTabChange(tab)}
               className={`flex-1 pb-2 text-sm font-bold text-center border-b-2 transition-colors 
                 ${activeTab === tab ? 'text-white border-[#7aa6da]' : 'text-[#a1b4d9] border-transparent hover:text-white'}`}
             >
@@ -125,7 +204,7 @@ const DashboardView: React.FC = () => {
             {stacks.map((stack) => (
               <button 
                 key={stack} 
-                onClick={() => setActiveStack(stack)}
+                onClick={() => handleStackChange(stack)}
                 className={`flex flex-col items-center justify-center rounded py-2 transition-colors text-xs font-bold gap-0.5
                   ${activeStack === stack ? 'bg-[#7aa6da] text-[#182628]' : 'bg-[#2d393b] text-[#7aa6da] hover:bg-[#465f61] hover:text-white'}`}
               >
@@ -136,15 +215,28 @@ const DashboardView: React.FC = () => {
           
           {/* Positions */}
           <div className="flex-1 flex flex-col gap-[7px]">
-            {positions.map((pos) => (
-              <button 
-                key={pos} 
-                onClick={() => setActivePosition(pos)}
-                className={`w-full py-2 px-3 rounded text-sm font-bold text-center transition-colors border-l-[3px]
-                  ${activePosition === pos ? 'bg-[#465f61] text-white border-[#7aa6da]' : 'bg-[#2d393b] text-[#ccdbdc] hover:bg-[#465f61] border-transparent'}`}
-              >
-                {pos}
-              </button>
+            {currentTabConfig.categories.map((category, i) => (
+              <React.Fragment key={category.name || i}>
+                {category.name && (
+                  <div className="text-[10px] font-black text-[#7aa6da] text-center uppercase tracking-[0.2em] py-2 mt-2 border-y border-[#7aa6da]/10 bg-[#0d1f1f]/50">
+                    {category.name}
+                  </div>
+                )}
+                <div className="flex flex-col gap-[7px]">
+                  {category.positions.map((pos) => (
+                    <button 
+                      key={pos} 
+                      onClick={() => setActivePosition(pos)}
+                      className={`w-full py-2 px-3 rounded text-[11px] font-bold text-center transition-all border-l-[3px] shadow-sm
+                        ${activePosition === pos 
+                          ? 'bg-[#465f61] text-white border-[#7aa6da] scale-[1.02]' 
+                          : 'bg-[#2d393b] text-[#ccdbdc] hover:bg-[#465f61] border-transparent hover:border-[#7aa6da]/30'}`}
+                    >
+                      {pos}
+                    </button>
+                  ))}
+                </div>
+              </React.Fragment>
             ))}
           </div>
         </div>
@@ -163,7 +255,12 @@ const DashboardView: React.FC = () => {
 
           <div className="flex flex-col items-center gap-0">
             <div className="flex items-center gap-2">
-              <span className="bg-[#0d1f1f] text-[#7aa6da] px-2 py-0.5 rounded text-[10px] font-black tracking-widest uppercase border border-[#7aa6da]/20">PREFLOP</span>
+              <button 
+                onClick={handlePreflopClick}
+                className="bg-[#0d1f1f] text-[#7aa6da] px-2 py-0.5 rounded text-[10px] font-black tracking-widest uppercase border border-[#7aa6da]/20 hover:bg-[#7aa6da]/10 transition-colors"
+              >
+                PREFLOP
+              </button>
               <span className="bg-[#003249] text-white px-3 py-0.5 rounded text-xs font-black uppercase">BTN</span>
             </div>
             <span className="text-[10px] font-bold text-[#7aa6da]/80 mt-0.5 tracking-tight">3BET = 7.5 BB</span>
@@ -188,7 +285,14 @@ const DashboardView: React.FC = () => {
         />
 
         {/* Strategy Matrix Wrapper */}
-        <div className="w-full flex-1 min-h-[500px] bg-[#2d393b] rounded-[5px] p-2 mt-3 flex flex-col relative shadow-lg">
+        <div className="w-full flex-1 min-h-[500px] bg-[#2d393b] rounded-[5px] p-2 mt-3 flex flex-col relative shadow-lg overflow-hidden">
+          {/* Internal Loading Overlay */}
+          {fetchingData && (
+            <div className="absolute inset-0 z-10 bg-[#182628]/40 backdrop-blur-[2px] flex items-center justify-center">
+              <div className="w-8 h-8 border-3 border-[#7aa6da] border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          )}
+          
           <div className="w-full flex-1 overflow-hidden rounded">
              <StrategyMatrix nodes={nodes} onHandSelect={(hand) => console.log('Selected:', hand)} />
           </div>

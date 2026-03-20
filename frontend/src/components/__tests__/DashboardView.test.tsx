@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BrowserRouter } from 'react-router-dom';
 import DashboardView from '../DashboardView';
@@ -180,5 +180,74 @@ describe('DashboardView', () => {
 
     // The button itself gets the text-white class, wait for state update
     await waitFor(() => expect(threeBetTab.className).toContain('text-white'));
+  });
+
+  it('resets board and clears solution on PREFLOP button click', async () => {
+    (apiClient.get as any).mockResolvedValue([mockSolution]);
+    
+    render(<DashboardView />, { wrapper: TestWrapper });
+    await waitFor(() => expect(screen.getByText('PREFLOP')).toBeInTheDocument());
+
+    const preflopBtn = screen.getByText('PREFLOP');
+    preflopBtn.click();
+
+    await waitFor(() => {
+      expect(global.localStorage.removeItem).toHaveBeenCalledWith('gto_active_solution');
+    });
+  });
+
+  it('shows loading overlay when fetching data', async () => {
+    let resolveRequest: (value: any) => void;
+    const pendingRequest = new Promise((resolve) => {
+      resolveRequest = resolve;
+    });
+
+    (apiClient.get as any).mockImplementation((url: string) => {
+      if (url.includes('/nodes/')) return pendingRequest;
+      if (url.includes('/solutions/?')) return Promise.resolve([mockSolution]);
+      if (url.includes('/solutions/1/')) return Promise.resolve(mockSolution);
+      return Promise.resolve([]);
+    });
+
+    render(<DashboardView />, { wrapper: TestWrapper });
+
+    // Wait for initial list fetch to trigger node fetch
+    await waitFor(() => {
+      const calls = (apiClient.get as any).mock.calls;
+      expect(calls.some((c: any) => c[0] === '/nodes/')).toBe(true);
+    }, { timeout: 3000 });
+
+    // Overlay should be present
+    expect(screen.getByRole('button', { name: /SB vs BB/i }).closest('div')).toBeDefined();
+    // We can check for the animate-spin class or a specific container
+    // Since we added a z-10 overlay:
+    expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+
+    // Resolve and it should disappear
+    await act(async () => {
+      resolveRequest! (mockNodes);
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('.animate-spin')).not.toBeInTheDocument();
+    });
+  });
+
+  it('toggles cards in the board selector', async () => {
+    (apiClient.get as any).mockResolvedValue([mockSolution]);
+    render(<DashboardView />, { wrapper: TestWrapper });
+
+    // "Ah" is rendered as "A" and "♥" in separate spans
+    await waitFor(() => expect(screen.getAllByText('A').length).toBeGreaterThan(0));
+
+    const aRank = screen.getAllByText('A')[0];
+    const ahCard = aRank.closest('button');
+    
+    await act(async () => {
+      ahCard?.click();
+    });
+
+    // The card should now have the brightness-150 class or similar
+    expect(ahCard?.className).toContain('brightness-150');
   });
 });
