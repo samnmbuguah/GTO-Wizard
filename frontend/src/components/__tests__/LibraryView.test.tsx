@@ -1,37 +1,27 @@
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import LibraryView from '../LibraryView';
 import { BrowserRouter } from 'react-router-dom';
 import '@testing-library/jest-dom';
+import { apiClient } from '../../api/client';
 
-// Mock localStorage
-const store: Record<string, string> = {};
-const localStorageMock = {
-  getItem: vi.fn((key: string) => store[key] || null),
-  setItem: vi.fn((key: string, value: string) => { store[key] = value.toString(); }),
-  clear: vi.fn(() => { Object.keys(store).forEach(k => delete store[k]); }),
-  removeItem: vi.fn((key: string) => { delete store[key]; }),
-  length: 0,
-  key: vi.fn((_index: number) => null),
-};
-
-vi.stubGlobal('localStorage', localStorageMock);
-vi.stubGlobal('fetch', vi.fn());
+// Mock the API client
+vi.mock('../../api/client', () => ({
+  apiClient: {
+    get: vi.fn(),
+    post: vi.fn(),
+  },
+}));
 
 const mockSolutions = [
-  { id: 1, name: 'UTG vs BB 100bb', rake: 0.05, stack_depth: 100, flop_texture: 'High' },
-  { id: 2, name: 'BTN vs BB 40bb', rake: 0.025, stack_depth: 40, flop_texture: 'Low' },
+  { id: '1', name: 'UTG vs BB 100bb', rake: 0.05, stack_depth: 100, flop_texture: 'High' },
+  { id: '2', name: 'BTN vs BB 40bb', rake: 0.025, stack_depth: 40, flop_texture: 'Low' },
 ];
 
 describe('LibraryView Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.clear();
-    localStorage.setItem('gto_token', 'test-token');
-    (global.fetch as any).mockResolvedValue({
-      ok: true,
-      json: async () => mockSolutions,
-    });
+    (apiClient.get as any).mockResolvedValue(mockSolutions);
   });
 
   const renderLibrary = () => {
@@ -42,7 +32,7 @@ describe('LibraryView Component', () => {
     );
   };
 
-  it('renders solutions and filters correctly', async () => {
+  it('renders solutions from apiClient', async () => {
     renderLibrary();
     
     await waitFor(() => {
@@ -65,19 +55,76 @@ describe('LibraryView Component', () => {
     expect(screen.queryByText('BTN vs BB 40bb')).not.toBeInTheDocument();
   });
 
-  it('triggers refetch on filter change', async () => {
+  it('shows no matches found state', async () => {
     renderLibrary();
-    
     await waitFor(() => screen.getByText('UTG vs BB 100bb'));
 
-    const rakeSelect = screen.getByDisplayValue('Any Rake');
-    fireEvent.change(rakeSelect, { target: { value: '0.05' } });
+    const searchInput = screen.getByPlaceholderText(/search/i);
+    fireEvent.change(searchInput, { target: { value: 'Non-existent' } });
 
+    expect(screen.queryByText('UTG vs BB 100bb')).not.toBeInTheDocument();
+    expect(screen.getByText('No matches found')).toBeInTheDocument();
+    
+    // Test the clear filters button
+    const clearBtn = screen.getByText('Clear all filters');
+    fireEvent.click(clearBtn);
+    
+    expect(searchInput).toHaveValue('');
+    expect(screen.getByText('UTG vs BB 100bb')).toBeInTheDocument();
+  });
+
+  it('handles the upload modal flow', async () => {
+    renderLibrary();
+    await waitFor(() => screen.getByText('UTG vs BB 100bb'));
+
+    // Open modal
+    const uploadBtn = screen.getByRole('button', { name: /Upload Solution/i });
+    fireEvent.click(uploadBtn);
+
+    expect(screen.getByText('Import Solver Solution')).toBeInTheDocument();
+
+    // Mock successful upload
+    (apiClient.post as any).mockResolvedValue({ status: 'success' });
+    
+    // Find the file input
+    // The input is hidden, but testing-library still finds it by role or label
+    // It's inside a label
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(fileInput).toBeInTheDocument();
+
+    const file = new File(['dummy content'], 'test.zip', { type: 'application/zip' });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    // Validate loading state
+    expect(screen.getByText('Processing Data...')).toBeInTheDocument();
+
+    // Validate success state
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('rake=0.05'),
-        expect.any(Object)
-      );
+      expect(screen.getByText('Import Success!')).toBeInTheDocument();
+    });
+    
+    expect(apiClient.post).toHaveBeenCalledTimes(1);
+    expect(apiClient.get).toHaveBeenCalledTimes(2); // Initial + after upload
+  });
+  
+  it('handles the upload modal error flow', async () => {
+    renderLibrary();
+    await waitFor(() => screen.getByText('UTG vs BB 100bb'));
+
+    // Open modal
+    const uploadBtn = screen.getByRole('button', { name: /Upload Solution/i });
+    fireEvent.click(uploadBtn);
+
+    // Mock failed upload
+    (apiClient.post as any).mockRejectedValue(new Error('Upload failed spectacularly'));
+    
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['dummy content'], 'test.zip', { type: 'application/zip' });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    // Validate error state
+    await waitFor(() => {
+      expect(screen.getByText('Upload failed spectacularly')).toBeInTheDocument();
     });
   });
 });

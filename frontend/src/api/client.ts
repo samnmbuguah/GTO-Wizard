@@ -59,18 +59,20 @@ export const apiClient = {
   },
 
   post<T>(endpoint: string, body: any, options?: RequestOptions) {
+    const isFormData = body instanceof FormData;
     return this.request<T>(endpoint, { 
       ...options, 
       method: 'POST', 
-      body: JSON.stringify(body) 
+      body: isFormData ? body : JSON.stringify(body) 
     });
   },
 
   patch<T>(endpoint: string, body: any, options?: RequestOptions) {
+    const isFormData = body instanceof FormData;
     return this.request<T>(endpoint, { 
       ...options, 
       method: 'PATCH', 
-      body: JSON.stringify(body) 
+      body: isFormData ? body : JSON.stringify(body) 
     });
   },
 

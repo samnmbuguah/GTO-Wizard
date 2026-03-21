@@ -2,6 +2,7 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BrowserRouter } from 'react-router-dom';
 import DashboardView from '../DashboardView';
+import { SolutionProvider } from '../../contexts/SolutionContext';
 import { apiClient } from '../../api/client';
 
 vi.mock('../../api/client', () => ({
@@ -56,7 +57,9 @@ describe('DashboardView', () => {
 
   const TestWrapper = ({ children }: { children: React.ReactNode }) => (
     <BrowserRouter>
-      {children}
+      <SolutionProvider>
+        {children}
+      </SolutionProvider>
     </BrowserRouter>
   );
 

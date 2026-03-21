@@ -2,6 +2,10 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
+import json
+import io
+import zipfile
 from solutions.models import Solution, StrategyNode, SolverConfig
 
 
@@ -251,6 +255,53 @@ class SolutionAPITests(APITestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    # ── Upload SIF Endpoint ─────────────────────────────────────
+
+    def _create_mock_zip(self):
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            zip_file.writestr("metadata.json", json.dumps({
+                "name": "API Test Solution",
+                "stack_depth": 50,
+                "rake": 0.05,
+                "game_type": "6max_cash",
+                "ante": False
+            }))
+            zip_file.writestr("nodes.json", json.dumps([
+                {"path": "r", "hand": "AA", "strategies": {"FOLD": 0.2, "CALL": 0.8}}
+            ]))
+        zip_buffer.seek(0)
+        return zip_buffer
+
+    def test_upload_solution_success(self):
+        zip_buffer = self._create_mock_zip()
+        uploaded_file = SimpleUploadedFile(
+            "test_solution.zip", 
+            zip_buffer.read(), 
+            content_type="application/zip"
+        )
+        
+        response = self.client.post(reverse('solution-upload'), {'file': uploaded_file}, format='multipart')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['message'], 'Successfully imported solution')
+        self.assertEqual(response.data['node_count'], 1)
+        self.assertTrue(Solution.objects.filter(name="API Test Solution").exists())
+
+    def test_upload_solution_no_file(self):
+        response = self.client.post(reverse('solution-upload'), {}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['error'], 'No file uploaded')
+
+    def test_upload_solution_invalid_file(self):
+        uploaded_file = SimpleUploadedFile(
+            "bad.txt", 
+            b"not a zip file", 
+            content_type="text/plain"
+        )
+        response = self.client.post(reverse('solution-upload'), {'file': uploaded_file}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('file is not a zip file', response.data['error'].lower())
 
 class SolutionUnauthenticatedTests(APITestCase):
     """Test that unauthenticated users can read but not write solutions."""
