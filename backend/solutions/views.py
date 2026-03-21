@@ -5,6 +5,9 @@ from django.db.models import Avg, Sum
 from .models import SolverConfig, Solution, StrategyNode, StrategyLock, StudySession
 from .serializers import SolverConfigSerializer, SolutionSerializer, StrategyNodeSerializer, StrategyLockSerializer, StudySessionSerializer
 from .utils import process_sif_upload
+from .solver import SolverService, rta_solver_queue
+import asyncio
+import json
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
 
@@ -149,6 +152,38 @@ class EquityDistributionView(APIView):
             return Response(data)
         except Solution.DoesNotExist:
             return Response({"error": "Solution not found"}, status=404)
+
+class DynamicSizingView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        solution_id = request.data.get('solution_id')
+        current_path = request.data.get('path', 'root')
+        board_texture = request.data.get('board_texture', 'Rainbow')
+        candidate_sizes = request.data.get('sizes', [0.33, 0.5, 0.75])
+
+        if not solution_id:
+            return Response({"error": "solution_id is required"}, status=400)
+
+        # Run via the async queue to manage concurrency
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            result = loop.run_until_complete(
+                rta_solver_queue.add_task(
+                    SolverService.simulate_dynamic_sizing(
+                        solution_id, current_path, board_texture, candidate_sizes
+                    )
+                )
+            )
+            return Response(result)
+        except Solution.DoesNotExist:
+            return Response({"error": "Solution not found"}, status=404)
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
+        finally:
+            loop.close()
 
 class StudySessionViewSet(viewsets.ModelViewSet):
     serializer_class = StudySessionSerializer
