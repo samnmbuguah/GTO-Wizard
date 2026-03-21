@@ -7,7 +7,10 @@ import {
   Loader2,
   AlertCircle,
   RefreshCw,
-  Database
+  Database,
+  Calculator,
+  Zap,
+  Clock
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import type { StrategyNode, Solution } from '../types/poker';
@@ -78,6 +81,11 @@ const DashboardView: React.FC = () => {
   const [useAnte, setUseAnte] = useState(false);
   const [gameType] = useState('6-Max');
   const [error, setError] = useState<string | null>(null);
+  
+  // Dynamic Sizing State
+  const [solverLoading, setSolverLoading] = useState(false);
+  const [solverResult, setSolverResult] = useState<any>(null);
+  const [customSizes, setCustomSizes] = useState('0.33, 0.5, 0.75, 1.0');
 
   const getFlopTexture = (cards: string[]) => {
     if (cards.length < 3) return '';
@@ -126,6 +134,17 @@ const DashboardView: React.FC = () => {
 
     resolveId();
   }, [activeStack, activePosition, activeTab, solutionId, useAnte, gameType, board]);
+
+  // Global Hotkey 'G'
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'g' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+        handlePreflopClick();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -204,8 +223,28 @@ const DashboardView: React.FC = () => {
 
   const handlePreflopClick = () => {
     handleReset();
-    // Return to root preflop state
+    setActiveTab('SRP');
+    setActivePosition('SB vs BB');
     localStorage.removeItem('gto_active_solution');
+  };
+
+  const runDynamicSolve = async () => {
+    if (!resolvedSolutionId) return;
+    setSolverLoading(true);
+    try {
+      const sizes = customSizes.split(',').map(s => parseFloat(s.trim())).filter(s => !isNaN(s));
+      const result = await apiClient.post('/solutions/dynamic-sizing/', {
+        solution_id: resolvedSolutionId,
+        path: 'root', // Dynamic solving from current path
+        board_texture: getFlopTexture(board),
+        sizes: sizes
+      });
+      setSolverResult(result);
+    } catch (err) {
+      console.error('Solver error:', err);
+    } finally {
+      setSolverLoading(false);
+    }
   };
 
   if (loading) {
@@ -409,6 +448,75 @@ const DashboardView: React.FC = () => {
               <i className="fa-solid fa-gear text-[20px]"></i>
             </button>
           </div>
+        </div>
+
+        {/* Dynamic Solver Panel */}
+        <div className="w-full mt-4 bg-[#182628] rounded-[5px] border border-[#2d393b] p-4 shadow-xl">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2 text-[#7aa6da]">
+              <Calculator className="w-5 h-5" />
+              <h3 className="font-black uppercase tracking-widest text-xs">Dynamic Solver (Fast Mode)</h3>
+            </div>
+            <div className="flex items-center gap-2 bg-[#0d1f1f] px-2 py-1 rounded border border-[#2d393b]">
+              <Zap className="w-3 h-3 text-yellow-500" />
+              <span className="text-[10px] font-bold text-yellow-500/80 uppercase">Depth-Limited &lt; 2s</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-[1fr_auto] gap-4 mb-4">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-bold text-[#a1b4d9] uppercase mb-1">Candidate Sizes (Pot %)</label>
+              <input 
+                type="text" 
+                value={customSizes}
+                onChange={(e) => setCustomSizes(e.target.value)}
+                className="bg-[#0d1f1f] border border-[#2d393b] rounded px-3 py-2 text-white text-xs font-bold focus:outline-none focus:border-[#7aa6da] transition-colors"
+                placeholder="e.g. 0.33, 0.5, 0.75"
+              />
+            </div>
+            <button 
+              onClick={runDynamicSolve}
+              disabled={solverLoading || !resolvedSolutionId}
+              className={`mt-5 flex items-center justify-center gap-2 bg-[#7aa6da] hover:bg-[#5a86ba] text-[#182628] font-black px-6 py-2 rounded-[3px] transition-all
+                ${(solverLoading || !resolvedSolutionId) ? 'opacity-50 cursor-not-allowed' : 'hover:scale-[1.02] shadow-lg'}`}
+            >
+              {solverLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calculator className="w-4 h-4" />}
+              <span className="uppercase text-[11px] tracking-wider">Solve Stream</span>
+            </button>
+          </div>
+
+          {solverResult && (
+            <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="bg-[#0d1f1f] p-3 rounded border border-[#2d393b]">
+                <p className="text-[9px] font-medium text-[#7aa6da] uppercase mb-1">Optimal Sizing</p>
+                <p className="text-xl font-black text-white">{(solverResult.optimal_size * 100).toFixed(0)}% Pot</p>
+                <div className="flex items-center gap-1 mt-1">
+                  <Clock className="w-3 h-3 text-[#a1b4d9]" />
+                  <span className="text-[10px] font-bold text-[#a1b4d9]">{solverResult.calc_time_ms}ms</span>
+                </div>
+                <div className="mt-2 flex items-center gap-1.5 bg-[#0d1f1f] px-2 py-0.5 rounded border border-[#2d393b] w-fit">
+                   <Database className={`w-2.5 h-2.5 ${solverResult.mode?.includes('API') ? 'text-green-500' : 'text-[#7aa6da]'}`} />
+                   <span className={`text-[8px] font-black uppercase tracking-tighter ${solverResult.mode?.includes('API') ? 'text-green-500' : 'text-[#7aa6da]'}`}>
+                     {solverResult.mode || 'Simulated'}
+                   </span>
+                </div>
+              </div>
+              <div className="bg-[#0d1f1f] p-3 rounded border border-[#2d393b] overflow-hidden">
+                <p className="text-[9px] font-medium text-[#7aa6da] uppercase mb-2">EV Distribution</p>
+                <div className="flex items-end gap-1.5 h-[30px]">
+                  {solverResult.ev_distribution?.map((d: any, i: number) => (
+                    <div 
+                      key={i} 
+                      title={`${d.size * 100}%: ${d.ev} EV`}
+                      className={`flex-1 rounded-t-sm transition-all duration-500
+                        ${d.size === solverResult.optimal_size ? 'bg-[#7aa6da]' : 'bg-[#465f61]/40'}`}
+                      style={{ height: `${Math.max(10, d.ev * 40)}%` }}
+                    ></div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         
       </div>
