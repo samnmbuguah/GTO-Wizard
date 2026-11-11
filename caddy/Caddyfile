@@ -1,0 +1,21 @@
+# Caddy reverse proxy for GTO-Wizard
+# Uses sslip.io with host public IP 45.81.4.169 or local fallback
+http://45.81.4.169.sslip.io:80, http://localhost:8080 {
+    # Route API and Admin to Django Backend
+    handle /api/* {
+        reverse_proxy 127.0.0.1:8000
+    }
+    handle /admin/* {
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    # Route WebSocket / Live Solver to backend / solver
+    handle /ws/* {
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    # Route all other frontend requests to Vite Dev / Preview Server
+    handle {
+        reverse_proxy 127.0.0.1:8089
+    }
+}
