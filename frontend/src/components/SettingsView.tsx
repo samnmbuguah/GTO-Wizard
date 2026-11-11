@@ -1,19 +1,113 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Bell, 
   Globe, 
   Eye, 
+  Sliders,
+  Zap,
+  Save
 } from 'lucide-react';
 
 const SettingsView: React.FC = () => {
+  const [rakePercent, setRakePercent] = useState<number>(() => {
+    return parseFloat(localStorage.getItem('gto_default_rake_percent') || '5.0');
+  });
+  const [rakeCap, setRakeCap] = useState<number>(() => {
+    return parseFloat(localStorage.getItem('gto_default_rake_cap') || '3.0');
+  });
+  const [preferredSizes, setPreferredSizes] = useState<string>(() => {
+    return localStorage.getItem('gto_default_sizes') || '0.33, 0.5, 0.75';
+  });
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const handleSaveSolverSettings = () => {
+    localStorage.setItem('gto_default_rake_percent', rakePercent.toString());
+    localStorage.setItem('gto_default_rake_cap', rakeCap.toString());
+    localStorage.setItem('gto_default_sizes', preferredSizes);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 2000);
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-in">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">System Settings</h2>
-        <p className="text-muted text-sm mt-1">Configure your application preferences and security.</p>
+        <h2 className="text-2xl font-bold tracking-tight">System & Solver Settings</h2>
+        <p className="text-muted text-sm mt-1">Configure your live depth-limited CFR solver engine parameters, rake structure, and UI preferences.</p>
       </div>
 
       <div className="space-y-6">
+        {/* Real-time Solver Engine Preferences */}
+        <section className="bg-card rounded-2xl border border-border overflow-hidden shadow-xl">
+          <div className="p-6 border-b border-border bg-background/20 font-bold text-xs uppercase tracking-widest text-[#7aa6da] flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Sliders className="w-4 h-4" /> Live Solver Parameters
+            </span>
+            <span className="flex items-center gap-1 text-[10px] text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded border border-yellow-400/20">
+              <Zap className="w-3 h-3" /> Sub-2s DLS Engine
+            </span>
+          </div>
+
+          <div className="p-6 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1">
+                  Default Rake Percentage (%)
+                </label>
+                <input 
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="15"
+                  value={rakePercent}
+                  onChange={(e) => setRakePercent(parseFloat(e.target.value) || 0)}
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-indigo-500 font-mono"
+                />
+                <p className="text-[11px] text-muted mt-1">Morphes baseline preflop ranges and postflop pot elasticity.</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1">
+                  Default Rake Cap (Big Blinds)
+                </label>
+                <input 
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="10"
+                  value={rakeCap}
+                  onChange={(e) => setRakeCap(parseFloat(e.target.value) || 0)}
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-indigo-500 font-mono"
+                />
+                <p className="text-[11px] text-muted mt-1">Cap constraint on max rake extracted per hand.</p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1">
+                Candidate Bet Sizing Grid (Pot Fractions)
+              </label>
+              <input 
+                type="text"
+                value={preferredSizes}
+                onChange={(e) => setPreferredSizes(e.target.value)}
+                placeholder="0.33, 0.5, 0.75"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-indigo-500 font-mono"
+              />
+              <p className="text-[11px] text-muted mt-1">Pruned to 1 optimal sizing during live depth-limited convergence.</p>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={handleSaveSolverSettings}
+                className="flex items-center gap-2 bg-[#7aa6da] hover:bg-[#5a86ba] text-[#182628] font-black px-5 py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all transform hover:scale-[1.02]"
+              >
+                <Save className="w-4 h-4" />
+                {saveSuccess ? 'Saved Settings!' : 'Save Solver Defaults'}
+              </button>
+            </div>
+          </div>
+        </section>
+
         <section className="bg-card rounded-2xl border border-border overflow-hidden shadow-xl">
           <div className="p-6 border-b border-border bg-background/20 font-bold text-xs uppercase tracking-widest text-muted">Preferences</div>
           
@@ -79,3 +173,4 @@ const SettingsView: React.FC = () => {
 };
 
 export default SettingsView;
+

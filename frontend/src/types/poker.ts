@@ -22,3 +22,25 @@ export interface Solution {
   stack_depth?: number;
   solver_config_id?: number;
 }
+
+export interface LiveSolvePayload {
+  board: string[];
+  spot?: string;
+  pot?: number;
+  effective_stack?: number;
+  rake_percent?: number;
+  rake_cap?: number;
+  oop_range?: Record<string, number>;
+  ip_range?: Record<string, number>;
+}
+
+export interface LiveSolveResponse {
+  exploitability: number;
+  solve_time_ms: number;
+  iterations: number;
+  strategy: Record<string, { fold: number; call: number; raise: number }>;
+  overall_frequencies: { fold: number; call: number; raise: number };
+  optimal_sizing: number;
+  engine: string;
+}
+

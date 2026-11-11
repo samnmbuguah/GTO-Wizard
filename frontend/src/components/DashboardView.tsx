@@ -82,10 +82,14 @@ const DashboardView: React.FC = () => {
   const [gameType] = useState('6-Max');
   const [error, setError] = useState<string | null>(null);
   
-  // Dynamic Sizing State
+  // Dynamic Sizing & Live Solving State
   const [solverLoading, setSolverLoading] = useState(false);
   const [solverResult, setSolverResult] = useState<any>(null);
-  const [customSizes, setCustomSizes] = useState('0.33, 0.5, 0.75, 1.0');
+  const [customSizes, setCustomSizes] = useState(() => localStorage.getItem('gto_default_sizes') || '0.33, 0.5, 0.75');
+  const [customRake, setCustomRake] = useState(() => parseFloat(localStorage.getItem('gto_default_rake_percent') || '5.0'));
+  const [customCap, setCustomCap] = useState(() => parseFloat(localStorage.getItem('gto_default_rake_cap') || '3.0'));
+  const [liveMode, setLiveMode] = useState(true);
+  const [liveSolveStats, setLiveSolveStats] = useState<{ solveTimeMs: number; exploitability: number; engine: string } | null>(null);
 
   const getFlopTexture = (cards: string[]) => {
     if (cards.length < 3) return '';
@@ -146,9 +150,59 @@ const DashboardView: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Live Solve Calculation Function
+  const triggerLiveSolve = async (currentBoard: string[]) => {
+    if (currentBoard.length < 3) return;
+    setFetchingData(true);
+    setError(null);
+    try {
+      const payload = {
+        board: currentBoard,
+        spot: `${activePosition.replace(' vs ', '_vs_')}_${activeTab.replace(' ', '')}`,
+        pot: 6.5,
+        effective_stack: parseFloat(activeStack) || 100.0,
+        rake_percent: customRake,
+        rake_cap: customCap
+      };
+      const res = await apiClient.post<any>('/solutions/live-solve/', payload);
+      if (res && res.strategy) {
+        // Map solved 13x13 strategy matrix into StrategyNode format for the matrix view
+        const generatedNodes: StrategyNode[] = Object.entries(res.strategy).map(([hand, acts]: [string, any], idx) => ({
+          id: idx + 1,
+          path: 'root',
+          hand: hand,
+          actions: {
+            Fold: acts.fold,
+            Call: acts.call,
+            Raise: acts.raise
+          },
+          ev: 0.0,
+          equity: 0.5
+        }));
+        setNodes(generatedNodes);
+        setLiveSolveStats({
+          solveTimeMs: res.solve_time_ms,
+          exploitability: res.exploitability,
+          engine: res.engine || 'Rust DCFR Engine'
+        });
+        setResolvedSolutionId('live_solution');
+      }
+    } catch (err: any) {
+      console.error('Live solve error:', err);
+    } finally {
+      setFetchingData(false);
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
+    if (liveMode && board.length >= 3) {
+      triggerLiveSolve(board);
+      return;
+    }
+
     const fetchData = async () => {
-      if (!resolvedSolutionId) {
+      if (!resolvedSolutionId || resolvedSolutionId === 'live_solution') {
         setNodes([]);
         setLoading(false);
         return;
@@ -170,7 +224,7 @@ const DashboardView: React.FC = () => {
       }
     };
     fetchData();
-  }, [resolvedSolutionId]);
+  }, [resolvedSolutionId, board, liveMode, customRake, customCap, activeStack, activePosition]);
 
   const handleRetry = () => {
     // Re-trigger the resolveId by toggling a hidden state or just re-resolving
@@ -377,6 +431,76 @@ const DashboardView: React.FC = () => {
              >
                RESET
              </button>
+          </div>
+        </div>
+
+        {/* Live Solver Telemetry Bar */}
+        <div className="flex flex-wrap items-center justify-between bg-[#1f2b2d] border border-[#2d393b] rounded-[5px] px-3 py-2 mb-2 text-xs">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                const next = !liveMode;
+                setLiveMode(next);
+                if (next && board.length >= 3) triggerLiveSolve(board);
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-bold uppercase transition-all ${
+                liveMode ? 'bg-green-600/20 text-green-400 border border-green-500/30' : 'bg-[#2d393b] text-[#a1b4d9]'
+              }`}
+            >
+              <Zap className={`w-3.5 h-3.5 ${liveMode ? 'text-green-400 animate-pulse' : 'text-gray-400'}`} />
+              {liveMode ? 'Live DLS Engine: ON' : 'Live DLS: OFF'}
+            </button>
+
+            {liveSolveStats && liveMode && (
+              <div className="flex items-center gap-3 font-mono text-[11px]">
+                <div className="flex items-center gap-1 text-[#7aa6da]">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>{liveSolveStats.solveTimeMs}ms</span>
+                </div>
+                <div className="flex items-center gap-1 text-emerald-400">
+                  <span>dEV: {liveSolveStats.exploitability}</span>
+                </div>
+                <span className="text-[10px] text-muted uppercase bg-[#182628] px-1.5 py-0.5 rounded border border-[#2d393b]">
+                  {liveSolveStats.engine}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 mt-2 sm:mt-0">
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-[#a1b4d9] uppercase font-bold">Rake:</span>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                max="10"
+                value={customRake}
+                onChange={(e) => setCustomRake(parseFloat(e.target.value) || 0)}
+                className="w-12 bg-[#0d1f1f] border border-[#2d393b] rounded px-1.5 py-0.5 text-white text-[11px] font-mono text-center focus:outline-none focus:border-[#7aa6da]"
+              />
+              <span className="text-[10px] text-[#a1b4d9]">%</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-[#a1b4d9] uppercase font-bold">Cap:</span>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                max="5"
+                value={customCap}
+                onChange={(e) => setCustomCap(parseFloat(e.target.value) || 0)}
+                className="w-12 bg-[#0d1f1f] border border-[#2d393b] rounded px-1.5 py-0.5 text-white text-[11px] font-mono text-center focus:outline-none focus:border-[#7aa6da]"
+              />
+              <span className="text-[10px] text-[#a1b4d9]">bb</span>
+            </div>
+            <button
+              onClick={() => board.length >= 3 && triggerLiveSolve(board)}
+              disabled={fetchingData || board.length < 3}
+              className="px-2.5 py-1 bg-[#7aa6da] hover:bg-[#5a86ba] text-[#182628] rounded font-bold text-[10px] uppercase transition-all disabled:opacity-40"
+            >
+              Re-Solve
+            </button>
           </div>
         </div>
 
