@@ -16,7 +16,9 @@ const LoginView: React.FC = () => {
     setError(null);
 
     try {
-      const res = await fetch('http://213.199.50.129:8000/api/token-auth/', {
+      const apiUrl = import.meta.env.VITE_API_URL || '/api';
+      const cleanApiUrl = apiUrl.replace(/\/+$/, '');
+      const res = await fetch(`${cleanApiUrl}/token-auth/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
