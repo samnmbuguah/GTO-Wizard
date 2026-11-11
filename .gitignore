@@ -31,12 +31,15 @@ target/
 
 # Large Datasets
 datasets/deeperstack/
+datasets/benchmark/
+datasets/generated/
 datasets/pokerbench/*.csv
 datasets/pokerbench/*.json
-datasets/*.csv
-datasets/*.json
-datasets/*.parquet
-datasets/*.pt
-datasets/*.h5
+datasets/**/*.csv
+datasets/**/*.json
+datasets/**/*.parquet
+datasets/**/*.pt
+datasets/**/*.h5
 !datasets/.gitkeep
 !datasets/README.md
+!datasets/SCHEMA.md
