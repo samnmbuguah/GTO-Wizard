@@ -61,19 +61,19 @@ class SolutionViewSet(viewsets.ModelViewSet):
         game_type = self.request.query_params.get('game_type')
         flop_texture = self.request.query_params.get('flop_texture')
 
-        if rake is not None:
+        if rake:
             queryset = queryset.filter(rake=rake)
-        if stack_depth is not None:
+        if stack_depth:
             queryset = queryset.filter(stack_depth=stack_depth)
-        if flop_texture is not None:
+        if flop_texture:
             queryset = queryset.filter(flop_texture=flop_texture)
-        if name is not None:
+        if name:
             queryset = queryset.filter(name__icontains=name)
-        if ante is not None:
+        if ante:
             queryset = queryset.filter(ante=ante)
-        if ante_gt is not None:
+        if ante_gt:
             queryset = queryset.filter(ante__gt=ante_gt)
-        if game_type is not None:
+        if game_type:
             queryset = queryset.filter(game_type=game_type)
         return queryset
 

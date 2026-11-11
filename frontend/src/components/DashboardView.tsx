@@ -67,6 +67,14 @@ const TAB_CONFIG: Record<string, Record<string, TabConfig>> = {
   }
 };
 
+const CANONICAL_PRESETS = [
+  { id: 'dry_ace', label: 'Dry Ace-High', cards: ['Ah', 'Kd', '2c'], desc: 'High range advantage' },
+  { id: 'wet_connected', label: 'Wet Connected', cards: ['9s', '8h', '7d'], desc: 'Dynamic texture' },
+  { id: 'paired', label: 'Paired Board', cards: ['8s', '8h', '2c'], desc: 'Trips never fold' },
+  { id: 'monotone', label: 'Monotone', cards: ['As', 'Ks', 'Ts'], desc: 'Flush risk texture' },
+  { id: 'low_disc', label: 'Low Disconnected', cards: ['7s', '4d', '2c'], desc: 'OOP retainment' },
+];
+
 const DashboardView: React.FC = () => {
   const { solutionId } = useParams<{ solutionId: string }>();
   const [resolvedSolutionId, setResolvedSolutionId] = useState<string | null>(null);
@@ -75,7 +83,7 @@ const DashboardView: React.FC = () => {
   const [fetchingData, setFetchingData] = useState(false);
   const [board, setBoard] = useState<string[]>([]);
   
-  // Left Nav State
+  // Left Nav State - Best Working Defaults for Live Demo
   const [activeTab, setActiveTab] = useState('SRP');
   const [activeStack, setActiveStack] = useState('100');
   const [activePosition, setActivePosition] = useState('SB vs BB');
@@ -553,6 +561,36 @@ const DashboardView: React.FC = () => {
           </div>
         </div>
 
+        {/* Canonical Texture Presets */}
+        <div className="flex flex-wrap items-center gap-1.5 w-full mb-2 px-1">
+          <span className="text-[10px] font-black uppercase tracking-wider text-[#a1b4d9] mr-1 flex items-center gap-1">
+            <Zap className="w-3 h-3 text-[#7aa6da]" />
+            Presets:
+          </span>
+          {CANONICAL_PRESETS.map((preset) => {
+            const isActive = board.length === 3 && preset.cards.every((c, i) => board[i] === c);
+            return (
+              <button
+                key={preset.id}
+                onClick={() => {
+                  setBoard(preset.cards);
+                  if (liveMode) triggerLiveSolve(preset.cards);
+                }}
+                className={`px-2.5 py-1 rounded text-[10.5px] font-bold transition-all flex items-center gap-1.5 border shadow-sm ${
+                  isActive
+                    ? 'bg-[#7aa6da] text-[#182628] border-white/40 scale-[1.02]'
+                    : 'bg-[#182628] text-[#ccdbdc] hover:bg-[#2d393b] hover:text-white border-[#2d393b]'
+                }`}
+              >
+                <span>{preset.label}</span>
+                <span className="font-mono text-[9.5px] opacity-75">
+                  ({preset.cards.join(' ')})
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Board Selector */}
         <BoardSelector
           board={board}
@@ -565,6 +603,7 @@ const DashboardView: React.FC = () => {
           <DecisionTree
             path={['Preflop', 'Flop', board.length >= 3 ? board.join(' ') : 'Flop Decision']}
             actions={['Fold', 'Call', 'Raise (33% Pot)']}
+            frequencies={liveSolveStats?.overallFrequencies}
             onActionClick={(action) => console.log('Action selected:', action)}
             onBreadcrumbClick={(index) => {
               if (index === 0) handlePreflopClick();
