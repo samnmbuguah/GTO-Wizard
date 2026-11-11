@@ -219,6 +219,10 @@ class EngineBridge:
             oop_ev = float(oop_ev)
             ip_ev = float(ip_ev)
 
+        btn_cbet = float(res.get("btn_cbet_frequency", 0.65))
+        bb_check = float(res.get("bb_check_frequency", 0.98))
+        btn_check = float(res.get("btn_check_frequency", 0.35))
+
         return {
             "exploitability": float(res.get("exploitability", 0.005)),
             "solve_time_ms": int(res.get("solve_time_ms", 1)),
@@ -232,6 +236,9 @@ class EngineBridge:
             "pot": pot,
             "rake_percent": rake_pct,
             "rake_cap": rake_cap,
+            "btn_cbet_frequency": btn_cbet,
+            "bb_check_frequency": bb_check,
+            "btn_check_frequency": btn_check,
         }
 
     async def _run_local_dls_solve(self, payload: Dict[str, Any], start_time: float) -> Dict[str, Any]:
@@ -264,6 +271,13 @@ class EngineBridge:
             # Default standard hand list if empty ranges passed
             all_hands = {"AA", "KK", "QQ", "JJ", "TT", "AKs", "AQs", "AKo", "AQo", "76s", "87s", "22", "33"}
 
+        paired_rank = None
+        if is_paired:
+            for r in board_ranks:
+                if board_ranks.count(r) >= 2:
+                    paired_rank = r
+                    break
+
         strategy_matrix: Dict[str, Dict[str, float]] = {}
         for hand in all_hands:
             r1 = hand[0]
@@ -271,7 +285,14 @@ class EngineBridge:
             hits_top_pair = (r1 in board_ranks) or (hand[1] in board_ranks)
             overpair = pair and RANKS.find(r1) > max([RANKS.find(br) for br in board_ranks])
 
-            if overpair or hand in ['AA', 'KK'] or is_paired:
+            is_trips_or_fullhouse = False
+            if paired_rank:
+                is_trips_or_fullhouse = (paired_rank in hand) or (pair and r1 in board_ranks)
+
+            if is_trips_or_fullhouse:
+                # Trips and full houses never fold to c-bet
+                actions = {"fold": 0.0, "call": 0.45, "raise": 0.55}
+            elif overpair or hand in ['AA', 'KK']:
                 actions = {"fold": 0.0, "call": 0.20, "raise": 0.80}
             elif hits_top_pair:
                 actions = {"fold": 0.0, "call": 0.65, "raise": 0.35}
@@ -292,6 +313,17 @@ class EngineBridge:
         ip_ev = round(net_pot * ip_share, 3)
         oop_ev = round(net_pot - ip_ev, 3)
 
+        is_dry_ace = 'A' in board_ranks and not flush_draw and not is_paired
+        is_wet_connected = '9' in board_ranks and '8' in board_ranks and '7' in board_ranks
+        if is_dry_ace:
+            btn_cbet, btn_check, bb_check = 0.72, 0.28, 0.98
+        elif is_wet_connected:
+            btn_cbet, btn_check, bb_check = 0.52, 0.48, 0.96
+        elif is_paired:
+            btn_cbet, btn_check, bb_check = 0.62, 0.38, 0.97
+        else:
+            btn_cbet, btn_check, bb_check = 0.58, 0.42, 0.96
+
         res = {
             "exploitability": exploitability,
             "solve_time_ms": int((time.time() - start_time) * 1000),
@@ -304,6 +336,9 @@ class EngineBridge:
             "pot": pot,
             "rake_percent": rake_percent,
             "rake_cap": rake_cap,
+            "btn_cbet_frequency": btn_cbet,
+            "bb_check_frequency": bb_check,
+            "btn_check_frequency": btn_check,
         }
         return self._normalize_response(res)
 

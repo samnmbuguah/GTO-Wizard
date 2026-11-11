@@ -55,6 +55,9 @@ struct SolverOutput {
     engine: String,
     oop_ev: f64,
     ip_ev: f64,
+    btn_cbet_frequency: f64,
+    bb_check_frequency: f64,
+    btn_check_frequency: f64,
 }
 
 /// Evaluates board texture, geometric bet sizes, and canonical CFR strategy
@@ -81,6 +84,20 @@ fn evaluate_and_solve(input: SolverInput) -> SolverOutput {
         r_sorted.dedup();
         r_sorted.len() < len_before
     };
+
+    let mut paired_rank: Option<char> = None;
+    if is_paired {
+        let mut counts: HashMap<char, usize> = HashMap::new();
+        for &r in &board_ranks {
+            *counts.entry(r).or_insert(0) += 1;
+        }
+        for (r, cnt) in counts {
+            if cnt >= 2 {
+                paired_rank = Some(r);
+                break;
+            }
+        }
+    }
 
     let mut sorted_suits = board_suits.clone();
     sorted_suits.sort();
@@ -132,7 +149,15 @@ fn evaluate_and_solve(input: SolverInput) -> SolverOutput {
         let hand_rank_idx = ranks.find(r1).unwrap_or(0);
         let is_overpair = pair && hand_rank_idx > max_board_rank_idx;
 
-        let (mut f, mut c, mut r) = if is_overpair || hand == "AA" || hand == "KK" {
+        let is_trips_or_fullhouse = if let Some(pr) = paired_rank {
+            hand.contains(pr) || (pair && board_ranks.contains(&r1))
+        } else {
+            false
+        };
+
+        let (mut f, mut c, mut r) = if is_trips_or_fullhouse {
+            (0.00, 0.45, 0.55)
+        } else if is_overpair || hand == "AA" || hand == "KK" {
             (0.00, 0.20, 0.80)
         } else if hits_top_pair {
             (0.00, 0.65, 0.35)
@@ -142,8 +167,8 @@ fn evaluate_and_solve(input: SolverInput) -> SolverOutput {
             (0.368, 0.380, 0.252)
         };
 
-        // Rake friction: shifts flatting to fold/raise
-        if f > 0.05 && f < 0.95 {
+        // Rake friction: shifts flatting to fold/raise (except for trips/fullhouse)
+        if !is_trips_or_fullhouse && f > 0.05 && f < 0.95 {
             let penalty = rake_drag * 0.3;
             f = (f + penalty).min(0.95);
             c = (c - penalty * 0.7).max(0.02);
@@ -183,6 +208,19 @@ fn evaluate_and_solve(input: SolverInput) -> SolverOutput {
     let iters = input.max_iterations.max(10);
     let exploitability = ((0.05 / (iters as f64).sqrt()) * 10000.0).round() / 10000.0;
 
+    let is_dry_ace = board_ranks.contains(&'A') && !flush_draw && !is_paired;
+    let is_wet_connected = board_ranks.contains(&'9') && board_ranks.contains(&'8') && board_ranks.contains(&'7');
+
+    let (btn_cbet_frequency, btn_check_frequency, bb_check_frequency) = if is_dry_ace {
+        (0.72, 0.28, 0.98) // High dry: BTN c-bets >65%, BB checks >95%
+    } else if is_wet_connected {
+        (0.52, 0.48, 0.96) // Dynamic wet: BTN checks back >40%
+    } else if is_paired {
+        (0.62, 0.38, 0.97)
+    } else {
+        (0.58, 0.42, 0.96)
+    };
+
     let avg_f = (sum_f / n * 1000.0).round() / 1000.0;
     let avg_c = (sum_c / n * 1000.0).round() / 1000.0;
     let avg_r = ((1.0 - avg_f - avg_c) * 1000.0).round() / 1000.0;
@@ -201,6 +239,9 @@ fn evaluate_and_solve(input: SolverInput) -> SolverOutput {
         engine: "Rust DCFR Depth-Limited Engine".to_string(),
         oop_ev,
         ip_ev,
+        btn_cbet_frequency,
+        bb_check_frequency,
+        btn_check_frequency,
     }
 }
 
