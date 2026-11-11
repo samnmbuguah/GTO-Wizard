@@ -42,5 +42,13 @@ export interface LiveSolveResponse {
   overall_frequencies: { fold: number; call: number; raise: number };
   optimal_sizing: number;
   engine: string;
+  oop_ev?: number;
+  ip_ev?: number;
+  pot?: number;
+  rake_percent?: number;
+  rake_cap?: number;
+  btn_cbet_frequency?: number;
+  bb_check_frequency?: number;
+  btn_check_frequency?: number;
 }
 

@@ -4,11 +4,12 @@ Handles real-time depth-limited solves (<2s) with custom rake interpolation and 
 """
 import asyncio
 import logging
+import time
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import permissions, status
 
-from .services.engine_client import engine_client
+from .services.engine_bridge import engine_bridge
 from .services.range_service import PreflopRangeService
 
 logger = logging.getLogger(__name__)
@@ -74,12 +75,12 @@ class LiveSolveView(APIView):
             oop_range = oop_range or derived_oop
             ip_range = ip_range or derived_ip
 
-        # 2. Run solve via Engine Client
+        # 2. Run solve via Engine Bridge
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
             result = loop.run_until_complete(
-                engine_client.solve_flop(
+                engine_bridge.solve_flop(
                     board=board,
                     oop_range=oop_range,
                     ip_range=ip_range,
@@ -87,12 +88,27 @@ class LiveSolveView(APIView):
                     effective_stack=effective_stack,
                     rake_percent=rake_percent,
                     rake_cap=rake_cap,
-                    max_sizes_per_node=1
+                    max_bets_per_node=1
                 )
             )
             return Response(result)
         except Exception as e:
             logger.error("Error running live solve: %s", str(e))
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            try:
+                result = loop.run_until_complete(
+                    engine_bridge._run_local_dls_solve({
+                        "board": board,
+                        "oop_range": oop_range,
+                        "ip_range": ip_range,
+                        "pot": pot,
+                        "effective_stack": effective_stack,
+                        "rake_percent": rake_percent,
+                        "rake_cap": rake_cap,
+                        "max_bets_per_node": 1,
+                    }, time.time())
+                )
+                return Response(result)
+            except Exception as fb_err:
+                return Response({"error": f"{str(e)} (fallback failed: {str(fb_err)})"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         finally:
             loop.close()

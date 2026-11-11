@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import StrategyMatrix from './StrategyMatrix';
 import BoardSelector from './BoardSelector';
 import SummaryStats from './SummaryStats';
+import DecisionTree from './DecisionTree';
 import { 
   Loader2,
   AlertCircle,
@@ -88,8 +89,17 @@ const DashboardView: React.FC = () => {
   const [customSizes, setCustomSizes] = useState(() => localStorage.getItem('gto_default_sizes') || '0.33, 0.5, 0.75');
   const [customRake, setCustomRake] = useState(() => parseFloat(localStorage.getItem('gto_default_rake_percent') || '5.0'));
   const [customCap, setCustomCap] = useState(() => parseFloat(localStorage.getItem('gto_default_rake_cap') || '3.0'));
+  const [customPot, setCustomPot] = useState(6.5);
+  const [customStack, setCustomStack] = useState(100.0);
   const [liveMode, setLiveMode] = useState(true);
-  const [liveSolveStats, setLiveSolveStats] = useState<{ solveTimeMs: number; exploitability: number; engine: string } | null>(null);
+  const [liveSolveStats, setLiveSolveStats] = useState<{
+    solveTimeMs: number;
+    exploitability: number;
+    engine: string;
+    oopEv?: number;
+    ipEv?: number;
+    overallFrequencies?: { fold: number; call: number; raise: number };
+  } | null>(null);
 
   const getFlopTexture = (cards: string[]) => {
     if (cards.length < 3) return '';
@@ -159,8 +169,8 @@ const DashboardView: React.FC = () => {
       const payload = {
         board: currentBoard,
         spot: `${activePosition.replace(' vs ', '_vs_')}_${activeTab.replace(' ', '')}`,
-        pot: 6.5,
-        effective_stack: parseFloat(activeStack) || 100.0,
+        pot: customPot,
+        effective_stack: customStack,
         rake_percent: customRake,
         rake_cap: customCap
       };
@@ -183,7 +193,10 @@ const DashboardView: React.FC = () => {
         setLiveSolveStats({
           solveTimeMs: res.solve_time_ms,
           exploitability: res.exploitability,
-          engine: res.engine || 'Rust DCFR Engine'
+          engine: res.engine || 'Rust DCFR Engine',
+          oopEv: res.oop_ev,
+          ipEv: res.ip_ev,
+          overallFrequencies: res.overall_frequencies
         });
         setResolvedSolutionId('live_solution');
       }
@@ -224,7 +237,7 @@ const DashboardView: React.FC = () => {
       }
     };
     fetchData();
-  }, [resolvedSolutionId, board, liveMode, customRake, customCap, activeStack, activePosition]);
+  }, [resolvedSolutionId, board, liveMode, customRake, customCap, customPot, customStack, activePosition]);
 
   const handleRetry = () => {
     // Re-trigger the resolveId by toggling a hidden state or just re-resolving
@@ -264,11 +277,15 @@ const DashboardView: React.FC = () => {
   };
 
   const handleCardToggle = (card: string) => {
-    setBoard(prev => 
-      prev.includes(card) 
+    setBoard(prev => {
+      const next = prev.includes(card) 
         ? prev.filter(c => c !== card) 
-        : (prev.length < 3 ? [...prev, card] : prev)
-    );
+        : (prev.length < 3 ? [...prev, card] : [prev[0], prev[1], card]);
+      if (liveMode && next.length >= 3) {
+        triggerLiveSolve(next);
+      }
+      return next;
+    });
   };
 
   const handleReset = () => {
@@ -452,7 +469,7 @@ const DashboardView: React.FC = () => {
             </button>
 
             {liveSolveStats && liveMode && (
-              <div className="flex items-center gap-3 font-mono text-[11px]">
+              <div className="flex flex-wrap items-center gap-3 font-mono text-[11px]">
                 <div className="flex items-center gap-1 text-[#7aa6da]">
                   <Clock className="w-3.5 h-3.5" />
                   <span>{liveSolveStats.solveTimeMs}ms</span>
@@ -460,14 +477,46 @@ const DashboardView: React.FC = () => {
                 <div className="flex items-center gap-1 text-emerald-400">
                   <span>dEV: {liveSolveStats.exploitability}</span>
                 </div>
-                <span className="text-[10px] text-muted uppercase bg-[#182628] px-1.5 py-0.5 rounded border border-[#2d393b]">
+                {liveSolveStats.oopEv !== undefined && (
+                  <div className="flex items-center gap-2 text-sky-300">
+                    <span>OOP: {liveSolveStats.oopEv}bb</span>
+                    <span>IP: {liveSolveStats.ipEv}bb</span>
+                  </div>
+                )}
+                <span className="text-[10px] text-[#a1b4d9] uppercase bg-[#182628] px-1.5 py-0.5 rounded border border-[#2d393b]">
                   {liveSolveStats.engine}
                 </span>
               </div>
             )}
           </div>
 
-          <div className="flex items-center gap-2 mt-2 sm:mt-0">
+          <div className="flex flex-wrap items-center gap-2 mt-2 sm:mt-0">
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-[#a1b4d9] uppercase font-bold">Pot:</span>
+              <input
+                type="number"
+                step="0.5"
+                min="1"
+                max="100"
+                value={customPot}
+                onChange={(e) => setCustomPot(parseFloat(e.target.value) || 6.5)}
+                className="w-12 bg-[#0d1f1f] border border-[#2d393b] rounded px-1.5 py-0.5 text-white text-[11px] font-mono text-center focus:outline-none focus:border-[#7aa6da]"
+              />
+              <span className="text-[10px] text-[#a1b4d9]">bb</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-[#a1b4d9] uppercase font-bold">Stack:</span>
+              <input
+                type="number"
+                step="5"
+                min="10"
+                max="300"
+                value={customStack}
+                onChange={(e) => setCustomStack(parseFloat(e.target.value) || 100.0)}
+                className="w-14 bg-[#0d1f1f] border border-[#2d393b] rounded px-1.5 py-0.5 text-white text-[11px] font-mono text-center focus:outline-none focus:border-[#7aa6da]"
+              />
+              <span className="text-[10px] text-[#a1b4d9]">bb</span>
+            </div>
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-[#a1b4d9] uppercase font-bold">Rake:</span>
               <input
@@ -511,12 +560,26 @@ const DashboardView: React.FC = () => {
           onCardToggle={handleCardToggle}
         />
 
+        {/* Decision Tree / Street Action Navigator */}
+        <div className="w-full mt-2 mb-1">
+          <DecisionTree
+            path={['Preflop', 'Flop', board.length >= 3 ? board.join(' ') : 'Flop Decision']}
+            actions={['Fold', 'Call', 'Raise (33% Pot)']}
+            onActionClick={(action) => console.log('Action selected:', action)}
+            onBreadcrumbClick={(index) => {
+              if (index === 0) handlePreflopClick();
+            }}
+          />
+        </div>
+
         {/* Strategy Matrix Wrapper */}
         <div className="w-full flex-1 min-h-[500px] bg-[#2d393b] rounded-[5px] p-2 mt-3 flex flex-col relative shadow-lg overflow-hidden">
           {fetchingData && (
-            <div className="absolute inset-0 z-10 bg-[#182628]/60 backdrop-blur-[4px] flex flex-col items-center justify-center gap-4">
+            <div className="absolute inset-0 z-10 bg-[#182628]/70 backdrop-blur-[4px] flex flex-col items-center justify-center gap-3">
               <Loader2 className="w-10 h-10 text-[#7aa6da] animate-spin" />
-              <p className="text-[13px] font-black uppercase tracking-widest text-[#7aa6da]">Syncing Solved Data...</p>
+              <p className="text-[13px] font-black uppercase tracking-widest text-[#7aa6da]">
+                Solving GTO Tree via Rust DCFR Engine (&lt; 500ms)...
+              </p>
             </div>
           )}
 
