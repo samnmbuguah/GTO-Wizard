@@ -7,3 +7,6 @@ pandas
 gunicorn
 django-extensions
 httpx
+pytest
+pytest-django
+pytest-asyncio

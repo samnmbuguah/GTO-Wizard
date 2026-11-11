@@ -1,0 +1,66 @@
+[
+  {
+    "id": "dry_ace_high",
+    "name": "Dry Ace-High (As 8d 3c)",
+    "texture": "Dry",
+    "board": ["As", "8d", "3c"],
+    "position_oop": "BB",
+    "position_ip": "BTN",
+    "pot": 6.5,
+    "effective_stack": 97.0,
+    "rake_percent": 5.0,
+    "rake_cap": 3.0,
+    "expected_cbet_frequency_min": 0.65,
+    "expected_oop_check_frequency_min": 0.95
+  },
+  {
+    "id": "wet_connected",
+    "name": "Wet Connected (9s 8h 7d)",
+    "texture": "Dynamic Wet",
+    "board": ["9s", "8h", "7d"],
+    "position_oop": "BB",
+    "position_ip": "BTN",
+    "pot": 6.5,
+    "effective_stack": 97.0,
+    "rake_percent": 5.0,
+    "rake_cap": 3.0,
+    "expected_check_back_min": 0.40
+  },
+  {
+    "id": "paired_board",
+    "name": "Paired Board (8s 8h 2c)",
+    "texture": "Paired",
+    "board": ["8s", "8h", "2c"],
+    "position_oop": "BB",
+    "position_ip": "BTN",
+    "pot": 6.5,
+    "effective_stack": 97.0,
+    "rake_percent": 5.0,
+    "rake_cap": 3.0,
+    "expected_trips_never_fold": true
+  },
+  {
+    "id": "monotone_board",
+    "name": "Monotone Board (As Ks Ts)",
+    "texture": "Monotone",
+    "board": ["As", "Ks", "Ts"],
+    "position_oop": "BB",
+    "position_ip": "BTN",
+    "pot": 6.5,
+    "effective_stack": 97.0,
+    "rake_percent": 5.0,
+    "rake_cap": 3.0
+  },
+  {
+    "id": "low_disconnected",
+    "name": "Low Disconnected (7s 4d 2c)",
+    "texture": "Low",
+    "board": ["7s", "4d", "2c"],
+    "position_oop": "BB",
+    "position_ip": "BTN",
+    "pot": 6.5,
+    "effective_stack": 97.0,
+    "rake_percent": 5.0,
+    "rake_cap": 3.0
+  }
+]
