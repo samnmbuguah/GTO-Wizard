@@ -14,39 +14,52 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 20s
+    restart: unless-stopped
+
+  solver_daemon:
+    build:
+      context: ./backend/solver_daemon
+      dockerfile: Dockerfile
+    ports:
+      - "9998:9998"
     restart: unless-stopped
 
   backend:
     build: 
       context: ./backend
       dockerfile: Dockerfile
-      target: ${BUILD_TARGET:-development}
+      target: development
     volumes:
       - ./backend:/app
       - /app/__pycache__
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/gtowizard
+      - SOLVER_DAEMON_HOST=solver_daemon
+      - SOLVER_DAEMON_PORT=9998
       - DEBUG=True
-      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173,http://213.199.50.129:8089,http://213.199.50.129:8000,http://localhost:8089
-      - SUPERUSER_PASSWORD=${SUPERUSER_PASSWORD}
-      - NORMAL_USER_PASSWORD=${NORMAL_USER_PASSWORD}
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173,http://localhost:8089,http://45.81.4.169.sslip.io,http://45.81.4.169:8089,http://45.81.4.169
+      - SUPERUSER_PASSWORD=${SUPERUSER_PASSWORD:-Player1_Poker2026!}
+      - NORMAL_USER_PASSWORD=${NORMAL_USER_PASSWORD:-Player1_Poker2026!}
     depends_on:
       db:
         condition: service_healthy
+      solver_daemon:
+        condition: service_started
     ports:
       - "8000:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('127.0.0.1', 8000), 2); s.close()"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
     command: >
       sh -c "
         python manage.py makemigrations &&
         python manage.py migrate &&
+        python seed.py &&
         python manage.py runserver 0.0.0.0:8000
       "
 
@@ -54,26 +67,36 @@ services:
     build: 
       context: ./frontend
       dockerfile: Dockerfile
-      target: ${BUILD_TARGET:-development}
+      target: development
       args:
-        - VITE_API_URL=
+        - VITE_API_URL=/api
     volumes:
       - ./frontend:/app
       - /app/node_modules
-      - /app/dist
     environment:
       - VITE_BACKEND_URL=http://backend:8000
     ports:
-      - "8089:5173"
+      - "8089:8089"
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:5173/',(r)=>process.exit(r.statusCode>=200&&r.statusCode<500?0:1)).on('error',()=>process.exit(1))"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:8089/',(r)=>process.exit(r.statusCode>=200&&r.statusCode<500?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.7-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+    depends_on:
+      - backend
+      - frontend
     restart: unless-stopped
 
 volumes:

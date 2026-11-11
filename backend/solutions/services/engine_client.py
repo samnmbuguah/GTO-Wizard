@@ -11,6 +11,8 @@ import random
 import time
 from typing import Dict, Any, List, Optional, Tuple
 
+import os
+
 logger = logging.getLogger(__name__)
 
 # Standard suits & ranks
@@ -23,9 +25,9 @@ class EngineClient:
     Supports WebSocket / TCP / Subprocess IPC with graceful sub-second fallback.
     """
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 9998, timeout_sec: float = 2.0):
-        self.host = host
-        self.port = port
+    def __init__(self, host: Optional[str] = None, port: Optional[int] = None, timeout_sec: float = 2.0):
+        self.host = host or os.environ.get("SOLVER_DAEMON_HOST", "127.0.0.1")
+        self.port = int(port or os.environ.get("SOLVER_DAEMON_PORT", 9998))
         self.timeout_sec = timeout_sec
 
     async def solve_flop(
