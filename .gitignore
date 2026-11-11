@@ -26,6 +26,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 backend/solver_daemon/target/
+solver_daemon/target/
+target/
 
 # Large Datasets
 datasets/deeperstack/

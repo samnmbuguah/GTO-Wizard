@@ -19,7 +19,7 @@ services:
 
   solver_daemon:
     build:
-      context: ./backend/solver_daemon
+      context: ./solver_daemon
       dockerfile: Dockerfile
     ports:
       - "9998:9998"

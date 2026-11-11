@@ -55,11 +55,22 @@ class LiveSolveView(APIView):
         oop_range = request.data.get("oop_range")
         ip_range = request.data.get("ip_range")
         if not oop_range or not ip_range:
-            derived_oop, derived_ip = PreflopRangeService.get_spot_ranges(
-                spot=spot,
-                rake_percent=rake_percent,
-                rake_cap=rake_cap
-            )
+            pos_oop = request.data.get("position_oop")
+            pos_ip = request.data.get("position_ip")
+            if pos_oop and pos_ip:
+                derived_oop, derived_ip = PreflopRangeService.get_morphed_preflop_range(
+                    position_oop=pos_oop,
+                    position_ip=pos_ip,
+                    stack_bb=effective_stack,
+                    rake_pct=rake_percent,
+                    rake_cap=rake_cap
+                )
+            else:
+                derived_oop, derived_ip = PreflopRangeService.get_spot_ranges(
+                    spot=spot,
+                    rake_percent=rake_percent,
+                    rake_cap=rake_cap
+                )
             oop_range = oop_range or derived_oop
             ip_range = ip_range or derived_ip
 

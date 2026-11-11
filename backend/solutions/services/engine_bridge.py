@@ -91,7 +91,6 @@ class EngineBridge:
             "rake_percent": rake_percent,
             "rake_cap": rake_cap,
             "max_bets_per_node": max_bets_per_node,
-            "max_sizes_per_node": max_bets_per_node,
             "target_dEV": float(raw_data.get("target_dEV", 0.005)),
             "max_iterations": int(raw_data.get("max_iterations", 200)),
         }
@@ -173,6 +172,10 @@ class EngineBridge:
             await writer.wait_closed()
 
             result = json.loads(raw_res.decode().strip())
+            if "error" in result:
+                logger.warning(f"Daemon error: {result['error']}, using local DLS fallback")
+                return await self._run_local_dls_solve(payload, start_time)
+
             result["solve_time_ms"] = int((time.time() - start_time) * 1000)
             result["engine"] = engine_label
             return self._normalize_response(result)
