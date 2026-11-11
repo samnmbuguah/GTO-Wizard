@@ -207,4 +207,7 @@ class EngineClient:
             "engine": "Depth-Limited Local DCFR"
         }
 
-engine_client = EngineClient()
+from .engine_bridge import EngineBridge, engine_bridge
+
+# Backward compatibility singleton
+engine_client = engine_bridge
