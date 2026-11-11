@@ -29,7 +29,9 @@ backend/solver_daemon/target/
 solver_daemon/target/
 target/
 
-# Large Datasets
+# Machine Learning Checkpoints
+ml/checkpoints/*.pt
+!ml/checkpoints/.gitkeep
 datasets/deeperstack/
 datasets/benchmark/
 datasets/generated/

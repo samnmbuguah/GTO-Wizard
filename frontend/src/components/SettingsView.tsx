@@ -14,7 +14,7 @@ const SettingsView: React.FC = () => {
     return parseFloat(localStorage.getItem('gto_default_rake_percent') || '5.0');
   });
   const [rakeCap, setRakeCap] = useState<number>(() => {
-    return parseFloat(localStorage.getItem('gto_default_rake_cap') || '3.0');
+    return parseFloat(localStorage.getItem('gto_default_rake_cap') || '0.6');
   });
   const [preferredSizes, setPreferredSizes] = useState<string>(() => {
     return localStorage.getItem('gto_default_sizes') || '0.33, 0.5, 0.75';

@@ -43,10 +43,11 @@ class LiveSolveView(APIView):
     def post(self, request):
         board = request.data.get("board", ["Ah", "Kd", "2c"])
         spot = request.data.get("spot", "BTN_vs_BB_SRP")
-        pot = float(request.data.get("pot", 6.5))
-        effective_stack = float(request.data.get("effective_stack", 97.0))
+        pot = float(request.data.get("pot", 5.5))
+        effective_stack = float(request.data.get("effective_stack", 100.0))
         rake_percent = float(request.data.get("rake_percent", 5.0))
-        rake_cap = float(request.data.get("rake_cap", 3.0))
+        rake_cap = float(request.data.get("rake_cap", 0.6))
+        open_size = float(request.data.get("open_size", 2.5))
 
         # Validate board
         if not isinstance(board, list) or len(board) < 3:

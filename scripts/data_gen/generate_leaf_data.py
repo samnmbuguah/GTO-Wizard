@@ -164,6 +164,8 @@ def main():
     parser.add_argument("--rake-cap", type=float, default=3.0, help="Rake cap in BB (default: 3.0)")
     parser.add_argument("--stacks", type=str, default="100.0", help="Comma-separated stack depths (default: 100.0)")
     parser.add_argument("--pot", type=float, default=6.5, help="Starting pot in BB (default: 6.5)")
+    parser.add_argument("--open-size", type=float, default=2.5, help="Preflop open size in BB (default: 2.5)")
+    parser.add_argument("--out-name", type=str, default=None, help="Explicit output filename (without extension)")
     parser.add_argument("--format", choices=["jsonl", "parquet", "both"], default="both", help="Output format")
     parser.add_argument("--out-dir", type=str, default=str(DEFAULT_OUT_DIR), help="Output directory")
 
@@ -182,6 +184,7 @@ def main():
     print(f"Target Configuration:")
     print(f"  • Canonical Boards   : {args.num_boards}")
     print(f"  • Stack Depths (bb)  : {stack_list}")
+    print(f"  • Preflop Open (bb)  : {args.open_size}")
     print(f"  • Pot Size (bb)      : {args.pot}")
     print(f"  • Rake Specification : {args.rake_pct}% (Cap: {args.rake_cap}bb)")
     print(f"  • Tree Pruning       : Single-size bet/raise per node (Zeno geometry)")
@@ -194,7 +197,13 @@ def main():
     t_start = time.perf_counter()
 
     for stack in stack_list:
-        base_filename = f"leaf_spots_{args.num_boards}_boards_{int(stack)}bb_{int(args.rake_pct)}pct"
+        if args.out_name:
+            base_filename = args.out_name
+        elif args.num_boards == 500 and stack == 100.0 and args.rake_cap == 0.6:
+            base_filename = "zeno_baseline_100bb_nl500"
+        else:
+            base_filename = f"leaf_spots_{args.num_boards}_boards_{int(stack)}bb_{int(args.rake_pct)}pct"
+
         jsonl_path = out_dir / f"{base_filename}.jsonl"
         parquet_path = out_dir / f"{base_filename}.parquet"
 
@@ -205,6 +214,7 @@ def main():
             "--rake-cap", str(args.rake_cap),
             "--stack-bb", str(stack),
             "--pot", str(args.pot),
+            "--open-size", str(args.open_size),
             "--out", str(jsonl_path),
         ]
 

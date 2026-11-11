@@ -97,9 +97,10 @@ const DashboardView: React.FC = () => {
   const [solverResult, setSolverResult] = useState<any>(null);
   const [customSizes, setCustomSizes] = useState(() => localStorage.getItem('gto_default_sizes') || '0.33, 0.5, 0.75');
   const [customRake, setCustomRake] = useState(() => parseFloat(localStorage.getItem('gto_default_rake_percent') || '5.0'));
-  const [customCap, setCustomCap] = useState(() => parseFloat(localStorage.getItem('gto_default_rake_cap') || '3.0'));
-  const [customPot, setCustomPot] = useState(6.5);
+  const [customCap, setCustomCap] = useState(() => parseFloat(localStorage.getItem('gto_default_rake_cap') || '0.6'));
+  const [customPot, setCustomPot] = useState(5.5);
   const [customStack, setCustomStack] = useState(100.0);
+  const [openSize, setOpenSize] = useState(2.5);
   const [liveMode, setLiveMode] = useState(true);
   const [liveSolveStats, setLiveSolveStats] = useState<{
     solveTimeMs: number;
@@ -181,7 +182,8 @@ const DashboardView: React.FC = () => {
         pot: customPot,
         effective_stack: customStack,
         rake_percent: customRake,
-        rake_cap: customCap
+        rake_cap: customCap,
+        open_size: openSize
       };
       const res = await apiClient.post<any>('/solutions/live-solve/', payload);
       if (res && res.strategy) {
@@ -493,6 +495,26 @@ const DashboardView: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 mt-2 sm:mt-0">
+            <span className="text-[9.5px] font-mono font-bold text-[#64ffda] bg-[#64ffda]/10 px-1.5 py-0.5 rounded border border-[#64ffda]/30 uppercase">
+              6-Max NL500
+            </span>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-[#a1b4d9] uppercase font-bold">Open:</span>
+              <input
+                type="number"
+                step="0.5"
+                min="2.0"
+                max="5.0"
+                value={openSize}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value) || 2.5;
+                  setOpenSize(val);
+                  setCustomPot(val * 2 + 0.5);
+                }}
+                className="w-11 bg-[#0d1f1f] border border-[#2d393b] rounded px-1.5 py-0.5 text-white text-[11px] font-mono text-center focus:outline-none focus:border-[#7aa6da]"
+              />
+              <span className="text-[10px] text-[#a1b4d9]">bb</span>
+            </div>
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-[#a1b4d9] uppercase font-bold">Pot:</span>
               <input
@@ -501,7 +523,7 @@ const DashboardView: React.FC = () => {
                 min="1"
                 max="100"
                 value={customPot}
-                onChange={(e) => setCustomPot(parseFloat(e.target.value) || 6.5)}
+                onChange={(e) => setCustomPot(parseFloat(e.target.value) || 5.5)}
                 className="w-12 bg-[#0d1f1f] border border-[#2d393b] rounded px-1.5 py-0.5 text-white text-[11px] font-mono text-center focus:outline-none focus:border-[#7aa6da]"
               />
               <span className="text-[10px] text-[#a1b4d9]">bb</span>

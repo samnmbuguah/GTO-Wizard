@@ -66,6 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rake_cap: f64 = 3.0;
     let mut stack_bb: f64 = 100.0;
     let mut pot: f64 = 6.5;
+    let mut open_size: f64 = 2.5;
     let mut out_path = "datasets/generated/leaf_dataset_50_boards.jsonl".to_string();
 
     let mut i = 1;
@@ -101,6 +102,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     i += 1;
                 }
             }
+            "--open-size" => {
+                if i + 1 < args.len() {
+                    open_size = args[i + 1].parse().unwrap_or(2.5);
+                    i += 1;
+                }
+            }
             "--out" | "-o" => {
                 if i + 1 < args.len() {
                     out_path = args[i + 1].clone();
@@ -117,7 +124,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("===============================================================================");
     println!("  • Boards to Solve  : {}", num_boards);
     println!("  • Rake Structure   : {:.1}% (Cap: {:.1}bb)", rake_pct, rake_cap);
-    println!("  • Effective Stack  : {:.1}bb | Pot: {:.1}bb", stack_bb, pot);
+    println!("  • Effective Stack  : {:.1}bb | Pot: {:.1}bb (Open: {:.1}bb)", stack_bb, pot, open_size);
     println!("  • Output File      : {}", out_path);
     println!("-------------------------------------------------------------------------------");
 
