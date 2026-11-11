@@ -33,8 +33,14 @@ const LoginView: React.FC = () => {
         localStorage.setItem('gto_user', username);
         navigate('/dashboard');
       } else {
-        const errData = await res.json();
-        setError(errData.non_field_errors?.[0] || 'Invalid credentials. Please try again.');
+        let errorMsg = 'Invalid credentials. Please try again.';
+        try {
+          const errData = await res.json();
+          errorMsg = errData.non_field_errors?.[0] || errData.detail || errorMsg;
+        } catch {
+          errorMsg = `Server error (${res.status}). Please check backend status.`;
+        }
+        setError(errorMsg);
       }
     } catch (err) {
       setError('Connection failed. Please check your backend status.');
