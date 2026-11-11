@@ -4,8 +4,17 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
+  --color-card-sub: var(--card-sub);
   --color-border: var(--border);
   --color-muted: var(--muted);
+  --color-poker-canvas: #00140f;
+  --color-poker-surface: #182628;
+  --color-poker-subsurface: #2d393b;
+  --color-poker-border: rgba(204, 219, 220, 0.18);
+  --color-poker-accent: #7aa6da;
+  --color-poker-teal: #64ffda;
+  --color-poker-light: #ccdbdc;
+  --color-poker-muted: #8b9ea0;
   --grid-template-columns-13: repeat(13, minmax(0, 1fr));
 }
 
@@ -13,16 +22,18 @@
   --background: #f1f5f9;
   --foreground: #0f172a;
   --card: #ffffff;
+  --card-sub: #f8fafc;
   --border: #cbd5e1;
   --muted: #475569;
 }
 
 .dark {
-  --background: #0a0f12;
-  --foreground: #f8fafc;
-  --card: #0e161b;
-  --border: #1e2a33;
-  --muted: #5e7382;
+  --background: #00140f;
+  --foreground: #ccdbdc;
+  --card: #182628;
+  --card-sub: #223235;
+  --border: rgba(204, 219, 220, 0.18);
+  --muted: #7aa6da;
 }
 
 body {
@@ -30,11 +41,11 @@ body {
   color: var(--foreground);
   -webkit-font-smoothing: antialiased;
   margin: 0;
-  transition: background-color 0s, color 0.3s;
+  transition: background-color 0.2s, color 0.2s;
 }
 
 .dark body {
-  background: #0a0f12;
+  background: #00140f;
 }
 
 /* Custom Animations */

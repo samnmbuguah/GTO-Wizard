@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import StrategyMatrix from './StrategyMatrix';
 import BoardSelector from './BoardSelector';
+import CardBadge from './common/CardBadge';
 import SummaryStats from './SummaryStats';
 import DecisionTree from './DecisionTree';
 import { 
@@ -436,17 +437,10 @@ const DashboardView: React.FC = () => {
           
           <div className="flex items-center gap-3">
              {/* Selected Cards display */}
-             <div className="flex gap-1 h-[30px] items-center px-2 bg-[#0d1f1f] rounded-[4px] border border-[#182628]">
-                {board.map((card, idx) => {
-                  const suit = card.slice(-1);
-                  const rank = card.slice(0, -1);
-                  const isRed = ['h', 'd'].includes(suit.toLowerCase());
-                  return (
-                    <div key={idx} className={`flex items-center justify-center bg-white rounded-sm px-1 min-w-[24px] h-[22px] font-black text-[11px] ${isRed ? 'text-red-600' : 'text-black'}`}>
-                      {rank.toUpperCase()}{suit.toLowerCase() === 'h' ? '♥' : suit.toLowerCase() === 'd' ? '♦' : suit.toLowerCase() === 's' ? '♠' : '♣'}
-                    </div>
-                  );
-                })}
+             <div className="flex gap-1.5 h-[30px] items-center px-2 bg-[#0d1f1f] rounded-[4px] border border-[#182628]">
+                {board.map((card, idx) => (
+                  <CardBadge key={idx} card={card} size="sm" />
+                ))}
                 {board.length === 0 && <span className="text-[10px] text-[#7aa6da]/30 font-bold italic">No Board</span>}
              </div>
              
@@ -576,15 +570,17 @@ const DashboardView: React.FC = () => {
                   setBoard(preset.cards);
                   if (liveMode) triggerLiveSolve(preset.cards);
                 }}
-                className={`px-2.5 py-1 rounded text-[10.5px] font-bold transition-all flex items-center gap-1.5 border shadow-sm ${
+                className={`px-2 py-1 rounded-[4px] text-[10.5px] font-bold transition-all flex items-center gap-1.5 border shadow-sm ${
                   isActive
                     ? 'bg-[#7aa6da] text-[#182628] border-white/40 scale-[1.02]'
                     : 'bg-[#182628] text-[#ccdbdc] hover:bg-[#2d393b] hover:text-white border-[#2d393b]'
                 }`}
               >
                 <span>{preset.label}</span>
-                <span className="font-mono text-[9.5px] opacity-75">
-                  ({preset.cards.join(' ')})
+                <span className="flex gap-0.5">
+                  {preset.cards.map((c) => (
+                    <CardBadge key={c} card={c} size="xs" />
+                  ))}
                 </span>
               </button>
             );

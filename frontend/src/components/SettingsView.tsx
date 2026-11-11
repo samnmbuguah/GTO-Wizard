@@ -5,7 +5,8 @@ import {
   Eye, 
   Sliders,
   Zap,
-  Save
+  Save,
+  Settings
 } from 'lucide-react';
 
 const SettingsView: React.FC = () => {
@@ -29,148 +30,143 @@ const SettingsView: React.FC = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-in">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">System & Solver Settings</h2>
-        <p className="text-muted text-sm mt-1">Configure your live depth-limited CFR solver engine parameters, rake structure, and UI preferences.</p>
-      </div>
-
-      <div className="space-y-6">
-        {/* Real-time Solver Engine Preferences */}
-        <section className="bg-card rounded-2xl border border-border overflow-hidden shadow-xl">
-          <div className="p-6 border-b border-border bg-background/20 font-bold text-xs uppercase tracking-widest text-[#7aa6da] flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              <Sliders className="w-4 h-4" /> Live Solver Parameters
-            </span>
-            <span className="flex items-center gap-1 text-[10px] text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded border border-yellow-400/20">
-              <Zap className="w-3 h-3" /> Sub-2s DLS Engine
-            </span>
+    <div className="min-h-full bg-[#00140f] p-6 lg:p-8 space-y-6 animate-in text-[#ccdbdc]">
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="border-b border-[#2d393b] pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-[#182628] border border-[#2d393b] rounded-[4px] flex items-center justify-center text-[#7aa6da]">
+              <Settings className="w-5 h-5" />
+            </div>
+            <h2 className="text-2xl font-black uppercase tracking-wider text-white">System & Solver Settings</h2>
           </div>
+          <p className="text-[#a1b4d9] text-xs mt-1 font-mono">
+            Configure live depth-limited CFR solver engine parameters, rake structure, and workstation defaults
+          </p>
+        </div>
 
-          <div className="p-6 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-4">
+          {/* Real-time Solver Engine Preferences */}
+          <section className="bg-[#182628] rounded-[6px] border border-[#2d393b] overflow-hidden shadow-xl">
+            <div className="p-4 border-b border-[#2d393b] bg-[#00140f]/60 font-bold text-xs uppercase tracking-wider text-[#7aa6da] flex items-center justify-between font-mono">
+              <span className="flex items-center gap-2">
+                <Sliders className="w-4 h-4" /> Live DCFR Solver Parameters
+              </span>
+              <span className="flex items-center gap-1 text-[10px] text-[#64ffda] bg-[#64ffda]/10 px-2 py-0.5 rounded-[3px] border border-[#64ffda]/30">
+                <Zap className="w-3 h-3" /> Sub-30ms DCFR Engine
+              </span>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-[#8b9ea0] uppercase tracking-wider mb-1 font-mono">
+                    Default Rake Percentage (%)
+                  </label>
+                  <input 
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="15"
+                    value={rakePercent}
+                    onChange={(e) => setRakePercent(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-[#00140f] border border-[#2d393b] rounded-[4px] px-3 py-2 text-sm text-white focus:outline-none focus:border-[#7aa6da] font-mono"
+                  />
+                  <p className="text-[11px] text-[#8b9ea0] mt-1">Calibrates pot elasticity and preflop baseline ranges.</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#8b9ea0] uppercase tracking-wider mb-1 font-mono">
+                    Default Rake Cap (Big Blinds)
+                  </label>
+                  <input 
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="10"
+                    value={rakeCap}
+                    onChange={(e) => setRakeCap(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-[#00140f] border border-[#2d393b] rounded-[4px] px-3 py-2 text-sm text-white focus:outline-none focus:border-[#7aa6da] font-mono"
+                  />
+                  <p className="text-[11px] text-[#8b9ea0] mt-1">Maximum rake extracted per spot in deep stack play.</p>
+                </div>
+              </div>
+
               <div>
-                <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1">
-                  Default Rake Percentage (%)
+                <label className="block text-xs font-bold text-[#8b9ea0] uppercase tracking-wider mb-1 font-mono">
+                  Candidate Bet Sizing Grid (Pot Fractions)
                 </label>
                 <input 
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="15"
-                  value={rakePercent}
-                  onChange={(e) => setRakePercent(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-indigo-500 font-mono"
+                  type="text"
+                  value={preferredSizes}
+                  onChange={(e) => setPreferredSizes(e.target.value)}
+                  placeholder="0.33, 0.5, 0.75"
+                  className="w-full bg-[#00140f] border border-[#2d393b] rounded-[4px] px-3 py-2 text-sm text-white focus:outline-none focus:border-[#7aa6da] font-mono"
                 />
-                <p className="text-[11px] text-muted mt-1">Morphes baseline preflop ranges and postflop pot elasticity.</p>
+                <p className="text-[11px] text-[#8b9ea0] mt-1">Single-size pruning algorithm dynamically selects the highest EV sizing.</p>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1">
-                  Default Rake Cap (Big Blinds)
-                </label>
-                <input 
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="10"
-                  value={rakeCap}
-                  onChange={(e) => setRakeCap(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-indigo-500 font-mono"
-                />
-                <p className="text-[11px] text-muted mt-1">Cap constraint on max rake extracted per hand.</p>
+              <div className="flex justify-end pt-2 border-t border-[#2d393b]">
+                <button
+                  onClick={handleSaveSolverSettings}
+                  className="flex items-center gap-2 bg-[#7aa6da] hover:bg-[#6894c7] text-[#00140f] font-black px-4 py-2 rounded-[4px] text-xs uppercase tracking-wider transition-all cursor-pointer shadow-md active:scale-95"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {saveSuccess ? 'Saved Settings!' : 'Save Solver Defaults'}
+                </button>
               </div>
             </div>
+          </section>
 
-            <div>
-              <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1">
-                Candidate Bet Sizing Grid (Pot Fractions)
-              </label>
-              <input 
-                type="text"
-                value={preferredSizes}
-                onChange={(e) => setPreferredSizes(e.target.value)}
-                placeholder="0.33, 0.5, 0.75"
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-indigo-500 font-mono"
-              />
-              <p className="text-[11px] text-muted mt-1">Pruned to 1 optimal sizing during live depth-limited convergence.</p>
+          <section className="bg-[#182628] rounded-[6px] border border-[#2d393b] overflow-hidden shadow-xl">
+            <div className="p-4 border-b border-[#2d393b] bg-[#00140f]/60 font-bold text-xs uppercase tracking-wider text-[#8b9ea0] font-mono">
+              Workstation Preferences
             </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                onClick={handleSaveSolverSettings}
-                className="flex items-center gap-2 bg-[#7aa6da] hover:bg-[#5a86ba] text-[#182628] font-black px-5 py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all transform hover:scale-[1.02]"
-              >
-                <Save className="w-4 h-4" />
-                {saveSuccess ? 'Saved Settings!' : 'Save Solver Defaults'}
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <section className="bg-card rounded-2xl border border-border overflow-hidden shadow-xl">
-          <div className="p-6 border-b border-border bg-background/20 font-bold text-xs uppercase tracking-widest text-muted">Preferences</div>
-          
-          <div className="divide-y divide-border/50">
-            <div className="p-6 flex items-center justify-between hover:bg-background/40 transition-colors cursor-pointer">
-              <div className="flex items-center gap-4">
-                <Globe className="w-5 h-5 text-muted" />
-                <div>
-                  <p className="text-sm font-semibold">Language</p>
-                  <p className="text-xs text-muted">English (United States)</p>
+            
+            <div className="divide-y divide-[#2d393b]">
+              <div className="p-4 flex items-center justify-between hover:bg-[#00140f]/40 transition-colors">
+                <div className="flex items-center gap-3">
+                  <Globe className="w-4 h-4 text-[#7aa6da]" />
+                  <div>
+                    <p className="text-xs font-bold text-white font-mono">Deck Theme</p>
+                    <p className="text-[11px] text-[#8b9ea0]">4-Color Standard (♥ Red, ♦ Blue, ♣ Green, ♠ Dark)</p>
+                  </div>
                 </div>
+                <span className="text-[10px] font-mono font-bold text-[#64ffda] bg-[#64ffda]/10 px-2 py-0.5 rounded-[3px] border border-[#64ffda]/30">
+                  Active
+                </span>
               </div>
-              <button className="text-xs font-bold text-indigo-400">Change</button>
-            </div>
 
-            <div className="p-6 flex items-center justify-between hover:bg-background/40 transition-colors cursor-pointer">
-              <div className="flex items-center gap-4">
-                <Bell className="w-5 h-5 text-muted" />
-                <div>
-                  <p className="text-sm font-semibold">Notifications</p>
-                  <p className="text-xs text-muted">Email and Desktop push notifications</p>
+              <div className="p-4 flex items-center justify-between hover:bg-[#00140f]/40 transition-colors">
+                <div className="flex items-center gap-3">
+                  <Bell className="w-4 h-4 text-[#7aa6da]" />
+                  <div>
+                    <p className="text-xs font-bold text-white font-mono">Convergence Telemetry</p>
+                    <p className="text-[11px] text-[#8b9ea0]">Display live solver latency, dEV, and OOP/IP counterfactual values</p>
+                  </div>
                 </div>
+                <span className="text-[10px] font-mono font-bold text-[#64ffda] bg-[#64ffda]/10 px-2 py-0.5 rounded-[3px] border border-[#64ffda]/30">
+                  Enabled
+                </span>
               </div>
-              <div className="flex items-center gap-2">
-                 <div className="w-8 h-4 bg-indigo-500 rounded-full relative">
-                    <div className="absolute right-0.5 top-0.5 w-3 h-3 bg-white rounded-full shadow-sm"></div>
-                 </div>
-              </div>
-            </div>
 
-            <div className="p-6 flex items-center justify-between hover:bg-background/40 transition-colors cursor-pointer">
-              <div className="flex items-center gap-4">
-                <Eye className="w-5 h-5 text-muted" />
-                <div>
-                  <p className="text-sm font-semibold">Privacy Mode</p>
-                  <p className="text-xs text-muted">Hide stack sizes and names in solver shared links</p>
+              <div className="p-4 flex items-center justify-between hover:bg-[#00140f]/40 transition-colors">
+                <div className="flex items-center gap-3">
+                  <Eye className="w-4 h-4 text-[#7aa6da]" />
+                  <div>
+                    <p className="text-xs font-bold text-white font-mono">Cell Hover EV Inspector</p>
+                    <p className="text-[11px] text-[#8b9ea0]">Highlight action frequencies and EV overlay on mouseover in 13x13 matrix</p>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                 <div className="w-8 h-4 bg-muted/40 rounded-full relative">
-                    <div className="absolute left-0.5 top-0.5 w-3 h-3 bg-white rounded-full shadow-sm"></div>
-                 </div>
+                <span className="text-[10px] font-mono font-bold text-[#64ffda] bg-[#64ffda]/10 px-2 py-0.5 rounded-[3px] border border-[#64ffda]/30">
+                  Enabled
+                </span>
               </div>
             </div>
-          </div>
-        </section>
-
-        <section className="bg-card rounded-2xl border border-border overflow-hidden shadow-xl">
-          <div className="p-6 border-b border-border bg-background/20 font-bold text-xs uppercase tracking-widest text-red-500/80">Danger Zone</div>
-          <div className="p-6 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-semibold text-foreground">Delete Account</p>
-              <p className="text-xs text-muted">Permanently delete your account and all associated data</p>
-            </div>
-            <button className="px-4 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg text-xs font-bold hover:bg-red-500 hover:text-white transition-all">
-              Delete Account
-            </button>
-          </div>
-        </section>
+          </section>
+        </div>
       </div>
     </div>
   );
 };
 
 export default SettingsView;
-

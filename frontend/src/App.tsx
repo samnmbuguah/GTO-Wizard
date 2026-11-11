@@ -26,10 +26,12 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
 
 // Loading component
 const LoadingSpinner = () => (
-  <div className="min-h-screen bg-background flex items-center justify-center">
-    <div className="flex flex-col items-center gap-4">
-      <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-      <p className="text-indigo-500 text-sm font-bold animate-pulse">Initializing Terminal...</p>
+  <div className="min-h-screen bg-[#00140f] flex items-center justify-center">
+    <div className="flex flex-col items-center gap-3">
+      <div className="w-8 h-8 border-2 border-[#7aa6da] border-t-transparent rounded-full animate-spin"></div>
+      <p className="text-[#7aa6da] text-xs font-mono font-bold animate-pulse uppercase tracking-wider">
+        Initializing Terminal...
+      </p>
     </div>
   </div>
 );

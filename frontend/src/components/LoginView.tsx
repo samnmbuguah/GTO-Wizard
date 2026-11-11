@@ -23,7 +23,7 @@ const LoginView: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           username: username.trim(), 
-          password: password.trim() 
+          password: password.trim(), 
         }),
       });
 
@@ -42,7 +42,7 @@ const LoginView: React.FC = () => {
         }
         setError(errorMsg);
       }
-    } catch (err) {
+    } catch {
       setError('Connection failed. Please check your backend status.');
     } finally {
       setLoading(false);
@@ -50,36 +50,38 @@ const LoginView: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f1f5f9] dark:bg-[#0f172a] flex items-center justify-center p-6 relative overflow-hidden font-sans">
-      {/* Dynamic Background Elements */}
-      <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
-         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500 rounded-full blur-[120px] animate-pulse"></div>
-         <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-violet-600 rounded-full blur-[150px] animate-pulse" style={{ animationDelay: '1s' }}></div>
+    <div className="min-h-screen bg-[#00140f] flex items-center justify-center p-6 relative overflow-hidden font-sans text-[#ccdbdc]">
+      {/* Background glow subtle geometry */}
+      <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-25">
+        <div className="absolute top-[-15%] left-[-10%] w-[45%] h-[45%] bg-[#182628] rounded-full blur-[140px]"></div>
+        <div className="absolute bottom-[-15%] right-[-10%] w-[50%] h-[50%] bg-[#2d393b] rounded-full blur-[160px]"></div>
       </div>
 
-      <div className="w-full max-w-md bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl p-10 rounded-[3rem] border border-white/20 dark:border-slate-800/50 shadow-2xl relative z-10 animate-in">
-        <div className="flex flex-col items-center mb-10">
-          <div className="w-20 h-20 bg-gradient-to-tr from-indigo-600 to-violet-600 rounded-[2rem] flex items-center justify-center shadow-xl shadow-indigo-500/30 mb-6 group hover:rotate-6 transition-transform">
-             <Activity className="w-10 h-10 text-white" />
+      <div className="w-full max-w-md bg-[#182628] p-8 rounded-[8px] border border-[#2d393b] shadow-2xl relative z-10 animate-in">
+        <div className="flex flex-col items-center mb-8">
+          <div className="w-14 h-14 bg-[#00140f] rounded-[6px] border border-[#2d393b] flex items-center justify-center shadow-lg mb-4 text-[#7aa6da]">
+            <Activity className="w-7 h-7 text-[#64ffda]" />
           </div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white text-center">
+          <h1 className="text-2xl font-black uppercase tracking-wider text-white text-center">
             Private GTO Wizard
           </h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm font-medium">Professional Poker Analysis</p>
+          <p className="text-[#a1b4d9] mt-1 text-xs font-mono">Professional DCFR Solver Terminal</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 ml-1">Username</label>
+            <label className="text-[10px] font-black uppercase tracking-wider text-[#8b9ea0] ml-1 font-mono">
+              Username
+            </label>
             <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <User className="w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                <User className="w-4 h-4 text-[#8b9ea0] group-focus-within:text-[#7aa6da] transition-colors" />
               </div>
               <input
                 type="text"
                 required
                 autoComplete="username"
-                className="block w-full pl-12 pr-4 py-4 bg-slate-100 dark:bg-slate-800/50 border-2 border-transparent focus:border-indigo-500 rounded-2xl transition-all outline-none text-slate-900 dark:text-white font-medium"
+                className="block w-full pl-10 pr-4 py-2.5 bg-[#00140f] border border-[#2d393b] focus:border-[#7aa6da] rounded-[4px] transition-all outline-none text-white text-xs font-mono"
                 placeholder="admin"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -88,16 +90,18 @@ const LoginView: React.FC = () => {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 ml-1">Password</label>
+            <label className="text-[10px] font-black uppercase tracking-wider text-[#8b9ea0] ml-1 font-mono">
+              Password
+            </label>
             <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <Lock className="w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                <Lock className="w-4 h-4 text-[#8b9ea0] group-focus-within:text-[#7aa6da] transition-colors" />
               </div>
               <input
-                type={showPassword ? "text" : "password"}
+                type={showPassword ? 'text' : 'password'}
                 required
                 autoComplete="current-password"
-                className="block w-full pl-12 pr-12 py-4 bg-slate-100 dark:bg-slate-800/50 border-2 border-transparent focus:border-indigo-500 rounded-2xl transition-all outline-none text-slate-900 dark:text-white font-medium"
+                className="block w-full pl-10 pr-10 py-2.5 bg-[#00140f] border border-[#2d393b] focus:border-[#7aa6da] rounded-[4px] transition-all outline-none text-white text-xs font-mono"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -105,15 +109,15 @@ const LoginView: React.FC = () => {
               <button 
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-indigo-500 transition-colors focus:outline-none"
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-[#8b9ea0] hover:text-[#7aa6da] transition-colors focus:outline-none cursor-pointer"
               >
-                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
           </div>
 
           {error && (
-            <div className="flex items-center gap-2 p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-500 text-xs font-bold animate-in">
+            <div className="flex items-center gap-2 p-3 bg-rose-500/10 border border-rose-500/30 rounded-[4px] text-rose-400 text-xs font-bold animate-in">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               <p>{error}</p>
             </div>
@@ -122,10 +126,10 @@ const LoginView: React.FC = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-2xl text-sm font-black uppercase tracking-widest transition-all shadow-xl shadow-indigo-600/20 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full py-3 bg-[#7aa6da] hover:bg-[#6894c7] text-[#00140f] rounded-[4px] text-xs font-black uppercase tracking-wider transition-all shadow-md active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer mt-2"
           >
             {loading ? (
-              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+              <div className="w-4 h-4 border-2 border-[#00140f]/30 border-t-[#00140f] rounded-full animate-spin"></div>
             ) : (
               <>
                 <span>Enter Terminal</span>
@@ -135,9 +139,9 @@ const LoginView: React.FC = () => {
           </button>
         </form>
 
-        <div className="mt-10 text-center">
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">
-            Access Restricted to Authorized Solvers
+        <div className="mt-8 text-center border-t border-[#2d393b] pt-4">
+          <p className="text-[10px] text-[#8b9ea0] font-bold uppercase tracking-wider font-mono">
+            High-Performance Live Equilibrium Engine
           </p>
         </div>
       </div>

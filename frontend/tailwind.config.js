@@ -9,22 +9,28 @@ export default {
     extend: {
       colors: {
         poker: {
-          dark: '#1a2f3b',
-          card: '#2c3e50',
-          accent: '#1abc9c',
-          red: '#e74c3c',
-          green: '#2ecc71',
-          blue: '#3498db',
-          gray: '#34495e',
-          light: '#ecf0f1',
-          darkgray: '#2c3e50'
+          canvas: '#00140f',
+          dark: '#00140f',
+          surface: '#182628',
+          card: '#182628',
+          subsurface: '#2d393b',
+          accent: '#7aa6da',
+          teal: '#64ffda',
+          border: 'rgba(204, 219, 220, 0.18)',
+          red: '#f43f5e',
+          green: '#10b981',
+          blue: '#457B9D',
+          gray: '#2d393b',
+          light: '#ccdbdc',
+          muted: '#8b9ea0',
         },
-        background: '#1a2f3b',
-        muted: '#7f8c8d',
-        border: '#34495e'
+        background: 'var(--background)',
+        card: 'var(--card)',
+        muted: 'var(--muted)',
+        border: 'var(--border)',
       },
       backgroundImage: {
-        'glass': 'linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05))',
+        'glass': 'linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02))',
       }
     },
   },
