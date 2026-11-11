@@ -1,5 +1,5 @@
-# Caddyfile for containerized deployment
-http://gtowizard.2d5104a9.sslip.io, http://zenosolver.2d5104a9.sslip.io, http://gto.2d5104a9.sslip.io, http://2d5104a9.sslip.io, http://45.81.4.169.sslip.io, http://:80 {
+# Caddyfile for containerized deployment with automatic HTTPS
+gtowizard.2d5104a9.sslip.io, zenosolver.2d5104a9.sslip.io, 45.81.4.169.sslip.io {
     # Backend REST endpoints & admin
     handle /api/* {
         reverse_proxy backend:8000
@@ -9,6 +9,20 @@ http://gtowizard.2d5104a9.sslip.io, http://zenosolver.2d5104a9.sslip.io, http://
     }
 
     # Route all other frontend requests to the containerized Vite frontend
+    handle {
+        reverse_proxy frontend:8089
+    }
+}
+
+# Fallback for direct IP or local access over HTTP
+:80 {
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
+    handle /admin/* {
+        reverse_proxy backend:8000
+    }
+
     handle {
         reverse_proxy frontend:8089
     }
