@@ -38,7 +38,7 @@ services:
       - SOLVER_DAEMON_HOST=solver_daemon
       - SOLVER_DAEMON_PORT=9998
       - DEBUG=True
-      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173,http://localhost:8089,http://45.81.4.169.sslip.io,http://45.81.4.169:8089,http://45.81.4.169
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173,http://localhost:8089,http://45.81.4.169.sslip.io,http://gtowizard.2d5104a9.sslip.io,http://zenosolver.2d5104a9.sslip.io,http://gto.2d5104a9.sslip.io,http://2d5104a9.sslip.io,http://45.81.4.169
       - SUPERUSER_PASSWORD=${SUPERUSER_PASSWORD:-Player1_Poker2026!}
       - NORMAL_USER_PASSWORD=${NORMAL_USER_PASSWORD:-Player1_Poker2026!}
     depends_on:

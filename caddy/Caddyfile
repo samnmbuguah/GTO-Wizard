@@ -1,5 +1,5 @@
 # Caddyfile for containerized deployment
-http://45.81.4.169.sslip.io:80, http://:80 {
+http://gtowizard.2d5104a9.sslip.io, http://zenosolver.2d5104a9.sslip.io, http://gto.2d5104a9.sslip.io, http://2d5104a9.sslip.io, http://45.81.4.169.sslip.io, http://:80 {
     # Backend REST endpoints & admin
     handle /api/* {
         reverse_proxy backend:8000
