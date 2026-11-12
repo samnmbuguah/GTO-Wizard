@@ -1,0 +1,6 @@
+label,board,pot,effective_stack,rake_percent,rake_cap,ref_oop_ev,ref_ip_ev,ref_cbet_pct,ref_oop_check_pct,ref_bet_size_pct,source
+Dry Ace-High (A-K-2 rainbow),Ah Kd 2c,5.5,100,5,0.6,,,,,,,manual
+Wet Connected (9-8-7 two-tone),9s 8h 7s,5.5,100,5,0.6,,,,,,,manual
+Paired Board (8-8-2 rainbow),8s 8h 2c,5.5,100,5,0.6,,,,,,,manual
+Monotone Flush (K-T-4 monotone),Kh Th 4h,5.5,100,5,0.6,,,,,,,manual
+Broadway Unpaired (Q-J-4 rainbow),Qs Jd 4c,5.5,100,5,0.6,,,,,,,manual

@@ -54,7 +54,7 @@ class EngineBridge:
         host: Optional[str] = None,
         port: Optional[int] = None,
         unix_socket_path: Optional[str] = None,
-        timeout_sec: float = 2.0
+        timeout_sec: float = 5.0
     ):
         self.host = host or os.environ.get("SOLVER_DAEMON_HOST", "127.0.0.1")
         self.port = int(port or os.environ.get("SOLVER_DAEMON_PORT", 9998))
@@ -92,7 +92,7 @@ class EngineBridge:
             "rake_cap": rake_cap,
             "max_bets_per_node": max_bets_per_node,
             "target_dEV": float(raw_data.get("target_dEV", 0.005)),
-            "max_iterations": int(raw_data.get("max_iterations", 200)),
+            "max_iterations": int(raw_data.get("max_iterations", 500)),
         }
 
     async def solve(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -176,16 +176,26 @@ class EngineBridge:
                 logger.warning(f"Daemon error: {result['error']}, using local DLS fallback")
                 return await self._run_local_dls_solve(payload, start_time)
 
+            # Keep the engine's own label; it states the method and limitations.
+            result.setdefault("engine", engine_label)
             result["solve_time_ms"] = int((time.time() - start_time) * 1000)
-            result["engine"] = engine_label
             result["board"] = payload.get("board", [])
+            result["pot"] = payload.get("pot", 6.5)
+            result["rake_percent"] = payload.get("rake_percent", 5.0)
+            result["rake_cap"] = payload.get("rake_cap", 3.0)
             return self._normalize_response(result)
         except Exception as e:
             logger.error(f"Error communicating with solver daemon: {e}")
             return await self._run_local_dls_solve(payload, start_time)
 
     def _normalize_response(self, res: Dict[str, Any]) -> Dict[str, Any]:
-        """Ensures all standard keys are present and formatted."""
+        """Ensures all standard keys are present and formatted.
+
+        Numeric fields are passed through from the engine. They are never
+        synthesised here: if the engine did not compute an EV or an
+        exploitability, the caller must see that as missing data rather than a
+        plausible-looking constant.
+        """
         strategy = res.get("strategy", {})
         overall = res.get("overall_frequencies")
         if not overall and strategy:
@@ -202,45 +212,49 @@ class EngineBridge:
                     "raise": round(total_r / count, 3),
                 }
             else:
-                overall = {"fold": 0.33, "call": 0.33, "raise": 0.34}
+                overall = {"fold": 0.0, "call": 1.0, "raise": 0.0}
 
-        # Zero-sum EV conservation
         pot = float(res.get("pot", 6.5))
         rake_pct = float(res.get("rake_percent", 5.0))
         rake_cap = float(res.get("rake_cap", 3.0))
-        expected_rake = min(pot * (rake_pct / 100.0), rake_cap)
-        net_pot = max(0.0, pot - expected_rake)
 
         oop_ev = res.get("oop_ev")
         ip_ev = res.get("ip_ev")
-        if oop_ev is None or ip_ev is None:
-            ip_ev = round(net_pot * 0.58, 3)
-            oop_ev = round(net_pot - ip_ev, 3)
-        else:
+        if oop_ev is not None:
             oop_ev = float(oop_ev)
+        if ip_ev is not None:
             ip_ev = float(ip_ev)
 
-        btn_cbet = float(res.get("btn_cbet_frequency", 0.65))
-        bb_check = float(res.get("bb_check_frequency", 0.98))
-        btn_check = float(res.get("btn_check_frequency", 0.35))
+        def optional_float(key: str) -> Optional[float]:
+            value = res.get(key)
+            return None if value is None else float(value)
 
         return {
             "board": res.get("board", []),
-            "exploitability": float(res.get("exploitability", 0.005)),
-            "solve_time_ms": int(res.get("solve_time_ms", 1)),
-            "iterations": int(res.get("iterations", 200)),
-            "optimal_sizing": float(res.get("optimal_sizing", 0.33)),
-            "engine": str(res.get("engine", "Fast DLS Engine")),
+            # Fraction of the starting pot. The daemon returns the real
+            # NashConv/2 of the solved (depth-limited) game.
+            "exploitability": optional_float("exploitability"),
+            "exploitability_pct_pot": optional_float("exploitability_pct_pot"),
+            "exploitability_bb": optional_float("exploitability_bb"),
+            "converged": bool(res.get("converged", False)),
+            "solve_time_ms": int(res.get("solve_time_ms", 0)),
+            "iterations": int(res.get("iterations", 0)),
+            "optimal_sizing": float(res.get("optimal_sizing", 0.0)),
+            "engine": str(res.get("engine", "unknown engine")),
             "strategy": strategy,
+            "strategy_detail": res.get("strategy_detail", {}),
+            "hand_ev": res.get("hand_ev", {}),
             "overall_frequencies": overall,
             "oop_ev": oop_ev,
             "ip_ev": ip_ev,
             "pot": pot,
             "rake_percent": rake_pct,
             "rake_cap": rake_cap,
-            "btn_cbet_frequency": btn_cbet,
-            "bb_check_frequency": bb_check,
-            "btn_check_frequency": btn_check,
+            "btn_cbet_frequency": optional_float("btn_cbet_frequency"),
+            "bb_check_frequency": optional_float("bb_check_frequency"),
+            "btn_check_frequency": optional_float("btn_check_frequency"),
+            "tree_nodes": int(res.get("tree_nodes", 0)),
+            "equity_samples": int(res.get("equity_samples", 0)),
         }
 
     async def _run_local_dls_solve(self, payload: Dict[str, Any], start_time: float) -> Dict[str, Any]:
@@ -331,7 +345,8 @@ class EngineBridge:
             "solve_time_ms": int((time.time() - start_time) * 1000),
             "iterations": iters,
             "optimal_sizing": optimal_size,
-            "engine": "Local DLS Engine (Fallback)",
+            "engine": "heuristic-preview (daemon unavailable)",
+            "converged": False,
             "strategy": strategy_matrix,
             "oop_ev": oop_ev,
             "ip_ev": ip_ev,

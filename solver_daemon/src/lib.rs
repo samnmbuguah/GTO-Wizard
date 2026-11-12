@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Instant;
 
+pub mod cfr;
+
 /// Standard normalized input payload adhering to Task 2 contract & SCHEMA.md
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct SolverInput {
@@ -20,7 +22,7 @@ pub struct SolverInput {
     pub rake_cap: f64,
     #[serde(default = "default_max_sizes", alias = "max_bets_per_node")]
     pub max_sizes_per_node: usize,
-    #[serde(default = "default_dev")]
+    #[serde(default = "default_dev", rename = "target_dEV", alias = "target_d_ev")]
     pub target_d_ev: f64,
     #[serde(default = "default_iters")]
     pub max_iterations: usize,
@@ -32,7 +34,7 @@ pub fn default_rake() -> f64 { 5.0 }
 pub fn default_cap() -> f64 { 3.0 }
 pub fn default_max_sizes() -> usize { 1 }
 pub fn default_dev() -> f64 { 0.005 }
-pub fn default_iters() -> usize { 200 }
+pub fn default_iters() -> usize { 500 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ActionFrequencies {
@@ -56,10 +58,47 @@ pub struct SolverOutput {
     pub btn_cbet_frequency: f64,
     pub bb_check_frequency: f64,
     pub btn_check_frequency: f64,
+    /// Per-hand action frequencies with the real action labels (Check / Bet 33% / ...).
+    #[serde(default)]
+    pub strategy_detail: HashMap<String, HashMap<String, f64>>,
+    /// Root-player EV per hand class, in bb.
+    #[serde(default)]
+    pub hand_ev: HashMap<String, f64>,
+    /// Exploitability in bb (NashConv / 2).
+    #[serde(default)]
+    pub exploitability_bb: f64,
+    /// Exploitability as a percentage of the starting pot.
+    #[serde(default)]
+    pub exploitability_pct_pot: f64,
+    /// Whether the target dEV was reached before the iteration/time budget.
+    #[serde(default)]
+    pub converged: bool,
+    /// Number of public nodes in the solved tree.
+    #[serde(default)]
+    pub tree_nodes: usize,
+    /// Number of turn/river runouts used for the equity leaves.
+    #[serde(default)]
+    pub equity_samples: usize,
 }
 
-/// Evaluates board texture, geometric bet sizes, and canonical CFR strategy
+/// Runs the real CFR engine, falling back to the historical heuristic if the
+/// input cannot be solved (e.g. an invalid board). The fallback is explicitly
+/// labelled so a caller cannot mistake it for a solved strategy.
 pub fn evaluate_and_solve(input: SolverInput) -> SolverOutput {
+    match cfr::solve(&input) {
+        Ok(out) => out,
+        Err(err) => {
+            eprintln!("CFR solve failed ({err}); returning heuristic preview");
+            let mut out = evaluate_and_solve_heuristic(input);
+            out.engine = "heuristic-preview (CFR failed)".to_string();
+            out.converged = false;
+            out
+        }
+    }
+}
+
+/// Historical heuristic table kept only as a clearly-labelled preview fallback.
+pub fn evaluate_and_solve_heuristic(input: SolverInput) -> SolverOutput {
     let start = Instant::now();
 
     let ranks = "23456789TJQKA";
@@ -232,6 +271,13 @@ pub fn evaluate_and_solve(input: SolverInput) -> SolverOutput {
         btn_cbet_frequency,
         bb_check_frequency,
         btn_check_frequency,
+        strategy_detail: HashMap::new(),
+        hand_ev: HashMap::new(),
+        exploitability_bb: exploitability * input.pot,
+        exploitability_pct_pot: exploitability * 100.0,
+        converged: false,
+        tree_nodes: 0,
+        equity_samples: 0,
     }
 }
 

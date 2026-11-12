@@ -53,7 +53,7 @@ class EngineBridgeDataContractTests(SimpleTestCase):
             self.assertIn("strategy", res)
             self.assertIn("overall_frequencies", res)
             self.assertIn("optimal_sizing", res)
-            self.assertIn("Local DLS Engine", res["engine"])
+            self.assertIn("heuristic-preview", res["engine"])
             self.assertLess(res["solve_time_ms"], 2000)
             self.assertIn("AA", res["strategy"])
             self.assertEqual(set(res["strategy"]["AA"].keys()), {"fold", "call", "raise"})

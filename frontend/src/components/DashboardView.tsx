@@ -104,7 +104,11 @@ const DashboardView: React.FC = () => {
   const [liveMode, setLiveMode] = useState(true);
   const [liveSolveStats, setLiveSolveStats] = useState<{
     solveTimeMs: number;
-    exploitability: number;
+    exploitability?: number;
+    exploitabilityPctPot?: number;
+    exploitabilityBb?: number;
+    iterations?: number;
+    converged?: boolean;
     engine: string;
     oopEv?: number;
     ipEv?: number;
@@ -187,26 +191,35 @@ const DashboardView: React.FC = () => {
       };
       const res = await apiClient.post<any>('/solutions/live-solve/', payload);
       if (res && res.strategy) {
-        // Map solved 13x13 strategy matrix into StrategyNode format for the matrix view
-        const generatedNodes: StrategyNode[] = Object.entries(res.strategy).map(([hand, acts]: [string, any], idx) => ({
-          id: idx + 1,
-          path: 'root',
-          hand: hand,
-          actions: {
-            Fold: acts.fold,
-            Call: acts.call,
-            Raise: acts.raise
-          },
-          ev: 0.0,
-          equity: 0.5
-        }));
+        // Map solved 13x13 strategy matrix into StrategyNode format for the matrix view.
+        // Prefer the engine's real action labels (Check / Bet 33% / All-in / ...).
+        // Only fall back to the fold/call/raise buckets if they are unavailable.
+        const generatedNodes: StrategyNode[] = Object.entries(res.strategy).map(([hand, acts]: [string, any], idx) => {
+          const detail = res.strategy_detail?.[hand];
+          const actions =
+            detail && Object.keys(detail).length > 0
+              ? detail
+              : { Fold: acts.fold, Call: acts.call, Raise: acts.raise };
+          return {
+            id: idx + 1,
+            path: 'root',
+            hand: hand,
+            actions,
+            ev: res.hand_ev?.[hand] ?? 0.0,
+            equity: 0.5,
+          };
+        });
         setNodes(generatedNodes);
         setLiveSolveStats({
           solveTimeMs: res.solve_time_ms,
-          exploitability: res.exploitability,
+          exploitability: res.exploitability ?? undefined,
+          exploitabilityPctPot: res.exploitability_pct_pot ?? undefined,
+          exploitabilityBb: res.exploitability_bb ?? undefined,
+          iterations: res.iterations,
+          converged: res.converged,
           engine: res.engine || 'Rust DCFR Engine',
-          oopEv: res.oop_ev,
-          ipEv: res.ip_ev,
+          oopEv: res.oop_ev ?? undefined,
+          ipEv: res.ip_ev ?? undefined,
           overallFrequencies: res.overall_frequencies
         });
         setResolvedSolutionId('live_solution');
@@ -469,7 +482,7 @@ const DashboardView: React.FC = () => {
               }`}
             >
               <Zap className={`w-3.5 h-3.5 ${liveMode ? 'text-green-400 animate-pulse' : 'text-gray-400'}`} />
-              {liveMode ? 'Live DLS Engine: ON' : 'Live DLS: OFF'}
+              {liveMode ? 'Live DCFR Engine: ON' : 'Live Solve: OFF'}
             </button>
 
             {liveSolveStats && liveMode && (
@@ -478,13 +491,34 @@ const DashboardView: React.FC = () => {
                   <Clock className="w-3.5 h-3.5" />
                   <span>{liveSolveStats.solveTimeMs}ms</span>
                 </div>
-                <div className="flex items-center gap-1 text-emerald-400">
-                  <span>dEV: {liveSolveStats.exploitability}</span>
-                </div>
+                {liveSolveStats.exploitabilityPctPot !== undefined ? (
+                  <div
+                    className={`flex items-center gap-1 ${
+                      liveSolveStats.converged ? 'text-emerald-400' : 'text-amber-400'
+                    }`}
+                    title={`NashConv/2 of the solved game: ${liveSolveStats.exploitabilityBb?.toFixed(4)} bb`}
+                  >
+                    <span>
+                      dEV: {liveSolveStats.exploitabilityPctPot.toFixed(3)}% pot
+                      {liveSolveStats.exploitabilityBb !== undefined &&
+                        ` (${liveSolveStats.exploitabilityBb.toFixed(4)} bb)`}
+                    </span>
+                    <span className="text-[9px] uppercase">
+                      {liveSolveStats.converged ? 'converged' : 'partial'}
+                    </span>
+                  </div>
+                ) : liveSolveStats.exploitability !== undefined ? (
+                  <div className="flex items-center gap-1 text-emerald-400">
+                    <span>dEV: {liveSolveStats.exploitability}</span>
+                  </div>
+                ) : null}
+                {liveSolveStats.iterations !== undefined && (
+                  <span className="text-[#a1b4d9]">{liveSolveStats.iterations} iters</span>
+                )}
                 {liveSolveStats.oopEv !== undefined && (
                   <div className="flex items-center gap-2 text-sky-300">
-                    <span>OOP: {liveSolveStats.oopEv}bb</span>
-                    <span>IP: {liveSolveStats.ipEv}bb</span>
+                    <span>OOP: {liveSolveStats.oopEv.toFixed(2)}bb</span>
+                    <span>IP: {liveSolveStats.ipEv?.toFixed(2)}bb</span>
                   </div>
                 )}
                 <span className="text-[10px] text-[#a1b4d9] uppercase bg-[#182628] px-1.5 py-0.5 rounded border border-[#2d393b]">
