@@ -132,6 +132,10 @@ class LeafValueNet(nn.Module):
         self.eval()
         ro = encode_range(reach_oop) if isinstance(reach_oop, dict) else np.asarray(reach_oop, dtype=np.float32)
         ri = encode_range(reach_ip) if isinstance(reach_ip, dict) else np.asarray(reach_ip, dtype=np.float32)
+        if ro.sum() > 1.0001:
+            ro = ro / ro.sum()
+        if ri.sum() > 1.0001:
+            ri = ri / ri.sum()
         m_o, m_i = float(ro.sum()), float(ri.sum())
         ro_n = ro / m_o if m_o > 1e-12 else np.zeros_like(ro)
         ri_n = ri / m_i if m_i > 1e-12 else np.zeros_like(ri)
