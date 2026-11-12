@@ -235,60 +235,69 @@ pub fn evaluate_and_solve(input: SolverInput) -> SolverOutput {
     }
 }
 
-/// Generates a representative set of canonical non-isomorphic flops with canonical suit mapping
-pub fn generate_canonical_flops(count: usize) -> Vec<Vec<String>> {
+/// Generates the complete set of all 1,755 canonical non-isomorphic flops in Hold'em
+pub fn get_all_canonical_flops() -> Vec<Vec<String>> {
     let ranks = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2'];
-    // Canonical suit patterns:
-    // Rainbow: ['s', 'h', 'd']
-    // Two-tone: ['s', 's', 'h']
-    // Monotone: ['s', 's', 's']
-    let suit_patterns = [
-        ['s', 'h', 'd'], // Rainbow
-        ['s', 's', 'h'], // Two-tone
-        ['s', 's', 's'], // Monotone
-    ];
+    let mut flops: Vec<Vec<String>> = Vec::with_capacity(1755);
 
-    let mut flops: Vec<Vec<String>> = Vec::new();
-
-    // 1. All combinations of 3 ranks in descending order (unpaired)
+    // 1. Unpaired flops (13 choose 3 = 286 rank combinations, 5 suit patterns each = 1,430 flops)
     for i in 0..ranks.len() {
         for j in (i + 1)..ranks.len() {
             for k in (j + 1)..ranks.len() {
-                for pattern in &suit_patterns {
-                    let b = vec![
-                        format!("{}{}", ranks[i], pattern[0]),
-                        format!("{}{}", ranks[j], pattern[1]),
-                        format!("{}{}", ranks[k], pattern[2]),
-                    ];
-                    flops.push(b);
-                    if flops.len() >= count * 10 {
-                        break;
-                    }
-                }
+                let r1 = ranks[i];
+                let r2 = ranks[j];
+                let r3 = ranks[k];
+
+                // Rainbow: s, h, d
+                flops.push(vec![format!("{}s", r1), format!("{}h", r2), format!("{}d", r3)]);
+                // Two-tone (r1 and r2 suited): s, s, h
+                flops.push(vec![format!("{}s", r1), format!("{}s", r2), format!("{}h", r3)]);
+                // Two-tone (r1 and r3 suited): s, h, s
+                flops.push(vec![format!("{}s", r1), format!("{}h", r2), format!("{}s", r3)]);
+                // Two-tone (r2 and r3 suited): h, s, s
+                flops.push(vec![format!("{}h", r1), format!("{}s", r2), format!("{}s", r3)]);
+                // Monotone: s, s, s
+                flops.push(vec![format!("{}s", r1), format!("{}s", r2), format!("{}s", r3)]);
             }
         }
     }
 
-    // 2. Paired flops (r1 == r2)
+    // 2. Paired flops (13 * 12 = 156 rank combinations, 2 suit patterns each = 312 flops)
     for i in 0..ranks.len() {
         for k in 0..ranks.len() {
-            if i == k { continue; }
-            // Paired with 2 suits (e.g. 8s 8h 2c)
-            let b = vec![
-                format!("{}s", ranks[i]),
-                format!("{}h", ranks[i]),
-                format!("{}d", ranks[k]),
-            ];
-            flops.push(b);
+            if i == k {
+                continue;
+            }
+            let r1 = ranks[i];
+            let r2 = ranks[k];
+            // Rainbow kicker: pair s, h; kicker d
+            flops.push(vec![format!("{}s", r1), format!("{}h", r1), format!("{}d", r2)]);
+            // Suited kicker: pair s, h; kicker s
+            flops.push(vec![format!("{}s", r1), format!("{}h", r1), format!("{}s", r2)]);
         }
     }
 
-    // Diverse stride sampling to guarantee rich representation across all textures
-    let step = (flops.len() / count).max(1);
-    let mut sampled: Vec<Vec<String>> = Vec::new();
+    // 3. Trips flops (13 rank combinations = 13 flops)
+    for i in 0..ranks.len() {
+        let r1 = ranks[i];
+        flops.push(vec![format!("{}s", r1), format!("{}h", r1), format!("{}d", r1)]);
+    }
+
+    flops
+}
+
+/// Generates a representative set of canonical non-isomorphic flops with canonical suit mapping
+pub fn generate_canonical_flops(count: usize) -> Vec<Vec<String>> {
+    let all_flops = get_all_canonical_flops();
+    if count >= all_flops.len() {
+        return all_flops;
+    }
+
+    let step = (all_flops.len() as f64 / count as f64).max(1.0);
+    let mut sampled: Vec<Vec<String>> = Vec::with_capacity(count);
     for i in 0..count {
-        let idx = (i * step) % flops.len();
-        sampled.push(flops[idx].clone());
+        let idx = ((i as f64 * step) as usize) % all_flops.len();
+        sampled.push(all_flops[idx].clone());
     }
     sampled
 }

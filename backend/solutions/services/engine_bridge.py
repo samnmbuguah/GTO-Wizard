@@ -178,6 +178,7 @@ class EngineBridge:
 
             result["solve_time_ms"] = int((time.time() - start_time) * 1000)
             result["engine"] = engine_label
+            result["board"] = payload.get("board", [])
             return self._normalize_response(result)
         except Exception as e:
             logger.error(f"Error communicating with solver daemon: {e}")
@@ -224,6 +225,7 @@ class EngineBridge:
         btn_check = float(res.get("btn_check_frequency", 0.35))
 
         return {
+            "board": res.get("board", []),
             "exploitability": float(res.get("exploitability", 0.005)),
             "solve_time_ms": int(res.get("solve_time_ms", 1)),
             "iterations": int(res.get("iterations", 200)),

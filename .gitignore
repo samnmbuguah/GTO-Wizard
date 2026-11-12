@@ -32,6 +32,7 @@ target/
 # Machine Learning Checkpoints
 ml/checkpoints/*.pt
 !ml/checkpoints/.gitkeep
+backend/artifacts/
 datasets/deeperstack/
 datasets/benchmark/
 datasets/generated/

@@ -48,12 +48,25 @@ class ZenoDataset(Dataset):
         self.df = df.reset_index(drop=True)
         self.precomputed_features = []
 
-        for _, row in self.df.iterrows():
-            board = list(row["board"])
-            pot = float(row["pot"])
-            stack = float(row["effective_stack"])
-            rake_pct = float(row["rake_percent"])
-            rake_cap = float(row["rake_cap"])
+        boards = self.df["board"].tolist()
+        pots = self.df["pot"].to_numpy(dtype=np.float32)
+        stacks = self.df["effective_stack"].to_numpy(dtype=np.float32)
+        rake_pcts = self.df["rake_percent"].to_numpy(dtype=np.float32)
+        rake_caps = self.df["rake_cap"].to_numpy(dtype=np.float32)
+        oop_evs = self.df["oop_ev"].to_numpy(dtype=np.float32)
+        ip_evs = self.df["ip_ev"].to_numpy(dtype=np.float32)
+
+        # Check if oop_range and ip_range exist as columns
+        oop_ranges = self.df["oop_range"].tolist() if "oop_range" in self.df.columns else [{}] * len(df)
+        ip_ranges = self.df["ip_range"].tolist() if "ip_range" in self.df.columns else [{}] * len(df)
+        overall_freqs = self.df["overall_frequencies"].tolist() if "overall_frequencies" in self.df.columns else [{}] * len(df)
+
+        for i in range(len(df)):
+            board = list(boards[i])
+            pot = float(pots[i])
+            stack = float(stacks[i])
+            rake_pct = float(rake_pcts[i])
+            rake_cap = float(rake_caps[i])
 
             # Model 1 features
             board_vec = encode_board(board)
@@ -63,28 +76,33 @@ class ZenoDataset(Dataset):
             m1_y = determine_optimal_bet_size(board, pot)
 
             # Model 2 features
-            # Range reaches
-            oop_range = row.get("oop_range")
-            if isinstance(oop_range, str):
-                oop_range = json.loads(oop_range)
-            ip_range = row.get("ip_range")
-            if isinstance(ip_range, str):
-                ip_range = json.loads(ip_range)
+            oop_r = oop_ranges[i]
+            if isinstance(oop_r, str):
+                try:
+                    oop_r = json.loads(oop_r)
+                except Exception:
+                    oop_r = {}
+            ip_r = ip_ranges[i]
+            if isinstance(ip_r, str):
+                try:
+                    ip_r = json.loads(ip_r)
+                except Exception:
+                    ip_r = {}
 
-            oop_vec = encode_range(oop_range if isinstance(oop_range, dict) else {})
-            ip_vec = encode_range(ip_range if isinstance(ip_range, dict) else {})
+            oop_vec = encode_range(oop_r if isinstance(oop_r, dict) else {})
+            ip_vec = encode_range(ip_r if isinstance(ip_r, dict) else {})
             ctx_m2 = np.array([pot, stack, rake_pct, rake_cap], dtype=np.float32)
             m2_x = np.concatenate([board_vec, oop_vec, ip_vec, ctx_m2])
 
-            oop_ev = float(row["oop_ev"])
-            ip_ev = float(row["ip_ev"])
-            m2_ev_y = np.array([oop_ev, ip_ev], dtype=np.float32)
+            m2_ev_y = np.array([float(oop_evs[i]), float(ip_evs[i])], dtype=np.float32)
 
-            # Overall frequencies
-            freqs = row.get("overall_frequencies")
+            freqs = overall_freqs[i]
             if isinstance(freqs, str):
-                freqs = json.loads(freqs)
-            if isinstance(freqs, dict):
+                try:
+                    freqs = json.loads(freqs)
+                except Exception:
+                    freqs = {}
+            if isinstance(freqs, dict) and "fold" in freqs:
                 m2_freq_y = np.array([
                     float(freqs.get("fold", 0.33)),
                     float(freqs.get("call", 0.33)),
@@ -93,13 +111,15 @@ class ZenoDataset(Dataset):
             else:
                 m2_freq_y = np.array([0.33, 0.33, 0.34], dtype=np.float32)
 
+            net_pot = pot - min(pot * (rake_pct / 100.0), rake_cap)
+
             self.precomputed_features.append({
                 "m1_x": torch.from_numpy(m1_x),
                 "m1_y": torch.tensor(m1_y, dtype=torch.long),
                 "m2_x": torch.from_numpy(m2_x),
                 "m2_ev_y": torch.from_numpy(m2_ev_y),
                 "m2_freq_y": torch.from_numpy(m2_freq_y),
-                "net_pot": pot - min(pot * (rake_pct / 100.0), rake_cap),
+                "net_pot": net_pot,
             })
 
     def __len__(self) -> int:
@@ -258,13 +278,13 @@ def main():
     parser.add_argument(
         "--dataset",
         type=str,
-        default="datasets/generated/zeno_baseline_100bb_nl500.parquet",
+        default="datasets/generated/nl500_100bb_full.parquet",
         help="Path to generated parquet dataset",
     )
     parser.add_argument("--epochs-m1", type=int, default=15, help="Epochs for Bet Size Predictor")
     parser.add_argument("--epochs-m2", type=int, default=20, help="Epochs for Leaf Value Net")
-    parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
-    parser.add_argument("--checkpoint-dir", type=str, default="ml/checkpoints", help="Directory to save weights")
+    parser.add_argument("--batch-size", type=int, default=128, help="Batch size")
+    parser.add_argument("--checkpoint-dir", type=str, default="ml/artifacts", help="Directory to save weights")
     args = parser.parse_args()
 
     dataset_path = REPO_ROOT / args.dataset
@@ -296,6 +316,8 @@ def main():
 
     ckpt_dir = REPO_ROOT / args.checkpoint_dir
     ckpt_dir.mkdir(parents=True, exist_ok=True)
+    alt_dir = REPO_ROOT / "ml" / "checkpoints"
+    alt_dir.mkdir(parents=True, exist_ok=True)
 
     t_start = time.perf_counter()
 
@@ -303,13 +325,45 @@ def main():
     model1 = train_model1_size_predictor(train_loader, val_loader, epochs=args.epochs_m1)
     m1_ckpt_path = ckpt_dir / "size_predictor.pt"
     torch.save(model1.state_dict(), m1_ckpt_path)
+    torch.save(model1.state_dict(), alt_dir / "size_predictor.pt")
     print(f"💾 Model 1 weights saved to: {m1_ckpt_path}")
+
+    # Export Model 1 ONNX
+    try:
+        dummy_m1 = torch.randn(1, 79, dtype=torch.float32)
+        torch.onnx.export(
+            model1,
+            dummy_m1,
+            str(ckpt_dir / "size_predictor.onnx"),
+            input_names=["input"],
+            output_names=["logits"],
+            dynamic_axes={"input": {0: "batch_size"}, "logits": {0: "batch_size"}},
+        )
+        print(f"📦 Model 1 ONNX exported to: {ckpt_dir / 'size_predictor.onnx'}")
+    except Exception as e:
+        print(f"⚠️ ONNX export for Model 1 skipped: {e}")
 
     # 2. Train Model 2 (Leaf Value Net)
     model2 = train_model2_leaf_value_net(train_loader, val_loader, epochs=args.epochs_m2)
     m2_ckpt_path = ckpt_dir / "leaf_value_net.pt"
     torch.save(model2.state_dict(), m2_ckpt_path)
+    torch.save(model2.state_dict(), alt_dir / "leaf_value_net.pt")
     print(f"💾 Model 2 weights saved to: {m2_ckpt_path}")
+
+    # Export Model 2 ONNX
+    try:
+        dummy_m2 = torch.randn(1, 417, dtype=torch.float32)
+        torch.onnx.export(
+            model2,
+            dummy_m2,
+            str(ckpt_dir / "leaf_value_net.onnx"),
+            input_names=["input"],
+            output_names=["ev", "freq_logits"],
+            dynamic_axes={"input": {0: "batch_size"}, "ev": {0: "batch_size"}, "freq_logits": {0: "batch_size"}},
+        )
+        print(f"📦 Model 2 ONNX exported to: {ckpt_dir / 'leaf_value_net.onnx'}")
+    except Exception as e:
+        print(f"⚠️ ONNX export for Model 2 skipped: {e}")
 
     total_time = time.perf_counter() - t_start
 

@@ -60,19 +60,18 @@ REQUIRED_SCHEMA_FIELDS = [
 
 
 def ensure_rust_binary_compiled() -> Path:
-    """Builds the release binary if it does not already exist."""
-    if not RUST_BIN_PATH.exists():
-        print("🔨 Compiling release batch_leaf_gen Rust binary for maximum performance...")
-        cargo_toml = REPO_ROOT / "solver_daemon" / "Cargo.toml"
-        res = subprocess.run(
-            ["cargo", "build", "--release", "--manifest-path", str(cargo_toml)],
-            capture_output=True,
-            text=True,
-        )
-        if res.returncode != 0:
-            print(f"Error compiling Rust binary:\n{res.stderr}")
-            sys.exit(1)
-        print("✅ Rust batch binary compiled successfully.")
+    """Builds the release binary ensuring it is up to date with source changes."""
+    print("🔨 Compiling release batch_leaf_gen Rust binary for maximum performance...")
+    cargo_toml = REPO_ROOT / "solver_daemon" / "Cargo.toml"
+    res = subprocess.run(
+        ["cargo", "build", "--release", "--bin", "batch_leaf_gen", "--manifest-path", str(cargo_toml)],
+        capture_output=True,
+        text=True,
+    )
+    if res.returncode != 0:
+        print(f"Error compiling Rust binary:\n{res.stderr}")
+        sys.exit(1)
+    print("✅ Rust batch binary compiled successfully.")
     return RUST_BIN_PATH
 
 
@@ -165,6 +164,7 @@ def main():
     parser.add_argument("--stacks", type=str, default="100.0", help="Comma-separated stack depths (default: 100.0)")
     parser.add_argument("--pot", type=float, default=6.5, help="Starting pot in BB (default: 6.5)")
     parser.add_argument("--open-size", type=float, default=2.5, help="Preflop open size in BB (default: 2.5)")
+    parser.add_argument("--all-spots", action="store_true", help="Generate all 11 standard 6-max spots with 3 turn exit leaf trajectories (~57,915 spots)")
     parser.add_argument("--out-name", type=str, default=None, help="Explicit output filename (without extension)")
     parser.add_argument("--format", choices=["jsonl", "parquet", "both"], default="both", help="Output format")
     parser.add_argument("--out-dir", type=str, default=str(DEFAULT_OUT_DIR), help="Output directory")
@@ -217,6 +217,8 @@ def main():
             "--open-size", str(args.open_size),
             "--out", str(jsonl_path),
         ]
+        if args.all_spots:
+            cmd.append("--all-spots")
 
         print(f"\n⚡ Solving batch for stack {stack:.0f}bb using native Rust solver...")
         run_res = subprocess.run(cmd, capture_output=True, text=True)
@@ -248,7 +250,7 @@ def main():
             all_generated_files.append(parquet_path)
 
         all_generated_files.append(jsonl_path)
-        total_spots += args.num_boards
+        total_spots += val_res["total_records"]
 
     t_end = time.perf_counter()
     wall_duration = t_end - t_start
