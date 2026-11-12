@@ -88,7 +88,7 @@ const ReportsView: React.FC = () => {
             </div>
 
             <div className="h-[380px] min-h-[380px] w-full relative">
-              <ResponsiveContainer width="100%" height="100%" aspect={1.6}>
+              <ResponsiveContainer width="100%" height={380} minWidth={0} minHeight={380}>
                 <BarChart data={data} margin={{ top: 20, right: 30, left: 10, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(204, 219, 220, 0.08)" />
                   <XAxis

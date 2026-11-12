@@ -48,8 +48,8 @@ const EquityChart: React.FC<EquityChartProps> = ({ solutionId }) => {
         <h2 className="text-sm font-bold uppercase tracking-widest text-muted">Equity Distribution</h2>
       </div>
 
-      <div className="h-full w-full min-h-[240px] relative">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="h-[240px] w-full min-h-[240px] relative">
+        <ResponsiveContainer width="100%" height={240} minWidth={0} minHeight={240}>
           <AreaChart
             data={chartData}
             margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
