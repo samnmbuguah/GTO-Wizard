@@ -589,9 +589,9 @@ impl BuildCtx {
                     children.push(child);
                 }
             }
-            // All-in always available
+            // All-in (only if short stacked, not 18x pot on flop)
             let allin_amt = state.stacks[p];
-            if allin_amt > 0.01
+            if allin_amt <= current_pot * 2.5 && allin_amt > 0.01
                 && !seen_amounts.iter().any(|a| (a - allin_amt).abs() < 0.01)
             {
                 let mut next = state;
@@ -653,9 +653,9 @@ impl BuildCtx {
                 children.push(child);
             }
 
-            // All-in
+            // All-in (only if short stacked)
             let allin_pay = state.stacks[p];
-            if allin_pay > state.to_call + 0.01 {
+            if allin_pay <= current_pot * 2.5 && allin_pay > state.to_call + 0.01 {
                 let mut next = state;
                 next.invested[p] += allin_pay;
                 next.stacks[p] -= allin_pay;

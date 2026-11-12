@@ -40,16 +40,23 @@ class ResidualBlock(nn.Module):
 
 class LeafValueNet(nn.Module):
     """
-    Model 2: Counterfactual Value Estimator for postflop leaf nodes.
-    Input:
-      - Board features: 75 dims (card one-hots, rank/suit histograms, texture flags)
-      - OOP Range reach: 169 dims
-      - IP Range reach: 169 dims
-      - Context: 5 dims (pot, invested_oop, invested_ip, net_pot, rake_pct)
-      Total input dim = 75 + 169 + 169 + 5 = 418 dims.
-    Outputs:
-      - v_oop: (batch, 169) counterfactual EV vector for OOP
-      - v_ip:  (batch, 169) counterfactual EV vector for IP
+    Model 2: range-conditioned leaf value estimator for flop/turn exit nodes.
+
+    Input (418 dims):
+      - Board features: 75
+      - OOP reach, NORMALIZED to sum 1: 169
+      - IP reach, NORMALIZED to sum 1: 169
+      - Context: 5 (total_pot/10, invested_oop/10, invested_ip/10, net_pot/10, rake_pct/10)
+
+    Output: two 169-dim LOGIT vectors. sigmoid(logit) is the per-class share of
+    the net pot that a hand wins against the opponent's normalized range
+    (an equity share in [0, 1]).
+
+    Counterfactual values are rebuilt exactly from the shares (see
+    ``reconstruct``), which makes them
+      * linear in the opponent's reach mass (correct at any reach scale), and
+      * zero-sum: sum(r_o * v_o) + sum(r_i * v_i) == m_o * m_i * net_pot - ...
+        after a projection step on the shares.
     """
 
     def __init__(
@@ -63,27 +70,20 @@ class LeafValueNet(nn.Module):
         super().__init__()
         self.total_input_dim = board_dim + (range_dim * 2) + ctx_dim
 
-        # Input projection
         self.input_proj = nn.Sequential(
             nn.Linear(self.total_input_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
             nn.GELU(),
         )
-
-        # Residual backbone
         self.blocks = nn.ModuleList([
             ResidualBlock(hidden_dim) for _ in range(num_res_blocks)
         ])
-
-        # OOP Counterfactual Value Head (169 hand classes)
         self.head_oop = nn.Sequential(
             nn.Linear(hidden_dim, 128),
             nn.LayerNorm(128),
             nn.GELU(),
             nn.Linear(128, 169),
         )
-
-        # IP Counterfactual Value Head (169 hand classes)
         self.head_ip = nn.Sequential(
             nn.Linear(hidden_dim, 128),
             nn.LayerNorm(128),
@@ -91,22 +91,26 @@ class LeafValueNet(nn.Module):
             nn.Linear(128, 169),
         )
 
-    def forward(
-        self, x: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Forward pass.
-        Returns:
-          - v_oop: (batch, 169)
-          - v_ip:  (batch, 169)
-        """
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Returns (logit_oop, logit_ip), each (batch, 169)."""
         h = self.input_proj(x)
         for block in self.blocks:
             h = block(h)
+        return self.head_oop(h), self.head_ip(h)
 
-        v_oop = self.head_oop(h)
-        v_ip = self.head_ip(h)
-        return v_oop, v_ip
+    @staticmethod
+    def zero_sum_shares(t_o, t_i, ro_n, ri_n):
+        """Projects shares so sum(ro_n*t_o) + sum(ri_n*t_i) == 1 (works for numpy or torch)."""
+        err = (ro_n * t_o).sum(-1, keepdims=True) + (ri_n * t_i).sum(-1, keepdims=True) - 1.0
+        return t_o - err / 2.0, t_i - err / 2.0
+
+    @staticmethod
+    def build_input(board, ro_n, ri_n, invested_oop, invested_ip, pot, rake_pct, rake_cap):
+        tot_pot = pot + invested_oop + invested_ip
+        net_pot = tot_pot - min(tot_pot * rake_pct / 100.0, rake_cap)
+        ctx = np.array([tot_pot / 10.0, invested_oop / 10.0, invested_ip / 10.0,
+                        net_pot / 10.0, rake_pct / 10.0], dtype=np.float32)
+        return np.concatenate([encode_board(board), ro_n, ri_n, ctx]).astype(np.float32), net_pot
 
     @torch.no_grad()
     def evaluate_leaf(
@@ -121,39 +125,23 @@ class LeafValueNet(nn.Module):
         rake_cap: float = 0.6,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Evaluates a terminal leaf state during live solving in < 0.2ms.
-        Returns (v_oop, v_ip) as numpy arrays of 169 values each.
+        Returns per-class counterfactual values (v_oop, v_ip) for UNNORMALIZED reaches,
+        identical in meaning to the Rust engine's exact showdown_values().
+        ``pot`` is the starting pot of the street (before invested amounts).
         """
         self.eval()
-        board_vec = encode_board(board)
+        ro = encode_range(reach_oop) if isinstance(reach_oop, dict) else np.asarray(reach_oop, dtype=np.float32)
+        ri = encode_range(reach_ip) if isinstance(reach_ip, dict) else np.asarray(reach_ip, dtype=np.float32)
+        m_o, m_i = float(ro.sum()), float(ri.sum())
+        ro_n = ro / m_o if m_o > 1e-12 else np.zeros_like(ro)
+        ri_n = ri / m_i if m_i > 1e-12 else np.zeros_like(ri)
 
-        if isinstance(reach_oop, dict):
-            oop_vec = encode_range(reach_oop)
-        else:
-            oop_vec = np.array(reach_oop, dtype=np.float32)
+        x, net_pot = self.build_input(board, ro_n, ri_n, invested_oop, invested_ip, pot, rake_pct, rake_cap)
+        lo, li = self.forward(torch.from_numpy(x).unsqueeze(0))
+        t_o = torch.sigmoid(lo)[0].numpy().astype(np.float64)
+        t_i = torch.sigmoid(li)[0].numpy().astype(np.float64)
+        t_o, t_i = self.zero_sum_shares(t_o, t_i, ro_n.astype(np.float64), ri_n.astype(np.float64))
 
-        if isinstance(reach_ip, dict):
-            ip_vec = encode_range(reach_ip)
-        else:
-            ip_vec = np.array(reach_ip, dtype=np.float32)
-
-        tot_pot = pot + invested_oop + invested_ip
-        rake = min(tot_pot * (rake_pct / 100.0), rake_cap)
-        net_pot = tot_pot - rake
-
-        ctx_vec = np.array([
-            tot_pot / 10.0,
-            invested_oop / 10.0,
-            invested_ip / 10.0,
-            net_pot / 10.0,
-            rake_pct / 10.0,
-        ], dtype=np.float32)
-
-        x_np = np.concatenate([board_vec, oop_vec, ip_vec, ctx_vec])
-        x_tensor = torch.from_numpy(x_np).unsqueeze(0)
-
-        v_oop_pred, v_ip_pred = self.forward(x_tensor)
-        v_oop = v_oop_pred.squeeze(0).numpy()
-        v_ip = v_ip_pred.squeeze(0).numpy()
-
-        return v_oop, v_ip
+        v_o = (t_o * net_pot - invested_oop) * m_i
+        v_i = (t_i * net_pot - invested_ip) * m_o
+        return v_o, v_i

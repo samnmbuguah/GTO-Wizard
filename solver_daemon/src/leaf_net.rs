@@ -239,11 +239,29 @@ impl LeafNet {
         let rake = (tot_pot * (rake_pct / 100.0)).min(rake_cap);
         let net_pot = tot_pot - rake;
 
+        // The net is trained on NORMALIZED ranges and predicts each class's share
+        // of the net pot against the opponent's normalized range. Values are
+        // rebuilt exactly, so they scale linearly with the opponent's reach
+        // mass and are zero-sum after the projection below.
+        let m_o: f64 = reach_o.iter().sum();
+        let m_i: f64 = reach_i.iter().sum();
+        let mut v_o = vec![0.0f64; N_CLASSES];
+        let mut v_i = vec![0.0f64; N_CLASSES];
+        if m_o <= 1e-12 || m_i <= 1e-12 {
+            // One side never reaches this leaf: every counterfactual value is
+            // multiplied by a zero opponent mass except the invested term.
+            for h in 0..N_CLASSES {
+                v_o[h] = -invested[0] * m_i;
+                v_i[h] = -invested[1] * m_o;
+            }
+            return (v_o, v_i);
+        }
+
         let mut x = [0.0f32; INPUT_DIM];
         x[..75].copy_from_slice(board_features);
         for i in 0..N_CLASSES {
-            x[75 + i] = reach_o[i] as f32;
-            x[75 + N_CLASSES + i] = reach_i[i] as f32;
+            x[75 + i] = (reach_o[i] / m_o) as f32;
+            x[75 + N_CLASSES + i] = (reach_i[i] / m_i) as f32;
         }
         let base_ctx = 75 + N_CLASSES * 2;
         x[base_ctx] = (tot_pot / 10.0) as f32;
@@ -252,15 +270,21 @@ impl LeafNet {
         x[base_ctx + 3] = (net_pot / 10.0) as f32;
         x[base_ctx + 4] = (rake_pct / 10.0) as f32;
 
-        let (pred_o, pred_i) = self.forward(&x);
-
-        let mut v_o = vec![0.0f64; N_CLASSES];
-        let mut v_i = vec![0.0f64; N_CLASSES];
-        for i in 0..N_CLASSES {
-            v_o[i] = pred_o[i] as f64;
-            v_i[i] = pred_i[i] as f64;
+        let (logit_o, logit_i) = self.forward(&x);
+        let mut t_o = [0.0f64; N_CLASSES];
+        let mut t_i = [0.0f64; N_CLASSES];
+        let mut err = -1.0f64;
+        for h in 0..N_CLASSES {
+            t_o[h] = 1.0 / (1.0 + (-(logit_o[h] as f64)).exp());
+            t_i[h] = 1.0 / (1.0 + (-(logit_i[h] as f64)).exp());
+            err += (reach_o[h] / m_o) * t_o[h] + (reach_i[h] / m_i) * t_i[h];
         }
-
+        // Zero-sum projection: sum(ro_n * t_o) + sum(ri_n * t_i) == 1.
+        let half = err / 2.0;
+        for h in 0..N_CLASSES {
+            v_o[h] = ((t_o[h] - half) * net_pot - invested[0]) * m_i;
+            v_i[h] = ((t_i[h] - half) * net_pot - invested[1]) * m_o;
+        }
         (v_o, v_i)
     }
 }
@@ -270,6 +294,10 @@ pub static GLOBAL_LEAF_NET: OnceLock<Option<LeafNet>> = OnceLock::new();
 pub fn get_leaf_net() -> Option<&'static LeafNet> {
     GLOBAL_LEAF_NET
         .get_or_init(|| {
+            if matches!(std::env::var("GTO_LEAF_NET").as_deref(), Ok("off") | Ok("0")) {
+                eprintln!("ℹ️ GTO_LEAF_NET=off; using exact showdown equity at leaves.");
+                return None;
+            }
             let candidate_paths = [
                 PathBuf::from("ml/artifacts/leaf_value_net_weights.bin"),
                 PathBuf::from("/app/artifacts/leaf_value_net_weights.bin"),
