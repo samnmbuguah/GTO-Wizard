@@ -21,7 +21,7 @@
 //! The number returned as `exploitability` is the real NashConv/2 of the
 //! modelled game, not a formula.
 
-use crate::{ActionFrequencies, SolverInput, SolverOutput};
+use crate::{ActionFrequencies, LeafSample, SolverInput, SolverOutput};
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -735,6 +735,10 @@ fn normalized_reach(weights: &[f64], classes: &[HandClass], board: &[Card]) -> V
 struct Solver<'a> {
     tree: &'a mut Tree,
     eq: &'a [f32],
+    board_features: [f32; 75],
+    range_o: &'a [f64],
+    range_i: &'a [f64],
+    leaf_net: Option<&'static crate::leaf_net::LeafNet>,
     pot: f64,
     rake_pct: f64,
     rake_cap: f64,
@@ -756,6 +760,18 @@ impl<'a> Solver<'a> {
         reach_o: &[f64],
         reach_i: &[f64],
     ) -> (Vec<f64>, Vec<f64>) {
+        if let Some(net) = self.leaf_net {
+            return net.evaluate_leaf(
+                &self.board_features,
+                reach_o,
+                reach_i,
+                invested,
+                self.pot,
+                self.rake_pct * 100.0, // percent
+                self.rake_cap,
+            );
+        }
+
         let total = self.pot + invested[0] + invested[1];
         let pot_net = total - self.rake_for(invested);
         let r_o: f64 = reach_o.iter().sum();
@@ -995,6 +1011,56 @@ impl<'a> Solver<'a> {
         out
     }
 
+    fn collect_leaf_samples(
+        &self,
+        idx: usize,
+        reach_o: &[f64],
+        reach_i: &[f64],
+        avg: &[Vec<Vec<f64>>],
+        out: &mut Vec<LeafSample>,
+    ) {
+        match &self.tree.nodes[idx].kind {
+            NodeKind::Fold { .. } => {}
+            NodeKind::Showdown => {
+                let invested = self.tree.nodes[idx].invested;
+                let (v_oop, v_ip) = self.showdown_values(invested, reach_o, reach_i);
+                out.push(LeafSample {
+                    invested,
+                    reach_oop: reach_o.to_vec(),
+                    reach_ip: reach_i.to_vec(),
+                    v_oop,
+                    v_ip,
+                });
+            }
+            NodeKind::Decision {
+                player,
+                actions,
+                children,
+                ..
+            } => {
+                let p = *player;
+                let n = actions.len();
+                let strat = &avg[idx];
+                for a in 0..n {
+                    let (ro, ri) = if p == 0 {
+                        let mut ro = vec![0.0; N_CLASSES];
+                        for h in 0..N_CLASSES {
+                            ro[h] = reach_o[h] * strat[h][a];
+                        }
+                        (ro, reach_i.to_vec())
+                    } else {
+                        let mut ri = vec![0.0; N_CLASSES];
+                        for h in 0..N_CLASSES {
+                            ri[h] = reach_i[h] * strat[h][a];
+                        }
+                        (reach_o.to_vec(), ri)
+                    };
+                    self.collect_leaf_samples(children[a], &ro, &ri, avg, out);
+                }
+            }
+        }
+    }
+
     fn eval_profile(
         &self,
         idx: usize,
@@ -1063,6 +1129,7 @@ impl<'a> Solver<'a> {
         idx: usize,
         br_player: usize,
         reach_opp: &[f64],
+        reach_self: &[f64],
         avg: &[Vec<Vec<f64>>],
         invested: [f64; 2],
     ) -> Vec<f64> {
@@ -1086,6 +1153,31 @@ impl<'a> Solver<'a> {
                 v
             }
             NodeKind::Showdown => {
+                if let Some(net) = self.leaf_net {
+                    let (v_o, v_i) = if br_player == 0 {
+                        net.evaluate_leaf(
+                            &self.board_features,
+                            reach_self,
+                            reach_opp,
+                            self.tree.nodes[idx].invested,
+                            self.pot,
+                            self.rake_pct * 100.0,
+                            self.rake_cap,
+                        )
+                    } else {
+                        net.evaluate_leaf(
+                            &self.board_features,
+                            reach_opp,
+                            reach_self,
+                            self.tree.nodes[idx].invested,
+                            self.pot,
+                            self.rake_pct * 100.0,
+                            self.rake_cap,
+                        )
+                    };
+                    return if br_player == 0 { v_o } else { v_i };
+                }
+
                 let r_opp: f64 = reach_opp.iter().sum();
                 let total = self.pot
                     + self.tree.nodes[idx].invested[0]
@@ -1117,11 +1209,16 @@ impl<'a> Solver<'a> {
             } => {
                 let p = *player;
                 let n = actions.len();
+                let strat = &avg[idx];
                 if p == br_player {
                     let mut best = vec![f64::NEG_INFINITY; N_CLASSES];
                     for a in 0..n {
+                        let mut r_self = vec![0.0; N_CLASSES];
+                        for h in 0..N_CLASSES {
+                            r_self[h] = reach_self[h] * strat[h][a];
+                        }
                         let child =
-                            self.best_response(children[a], br_player, reach_opp, avg, invested);
+                            self.best_response(children[a], br_player, reach_opp, &r_self, avg, invested);
                         for h in 0..N_CLASSES {
                             if child[h] > best[h] {
                                 best[h] = child[h];
@@ -1130,7 +1227,6 @@ impl<'a> Solver<'a> {
                     }
                     best
                 } else {
-                    let strat = &avg[idx];
                     let mut total = vec![0.0; N_CLASSES];
                     for a in 0..n {
                         let mut ro = vec![0.0; N_CLASSES];
@@ -1138,7 +1234,7 @@ impl<'a> Solver<'a> {
                             ro[h] = reach_opp[h] * strat[h][a];
                         }
                         let child =
-                            self.best_response(children[a], br_player, &ro, avg, invested);
+                            self.best_response(children[a], br_player, &ro, reach_self, avg, invested);
                         for h in 0..N_CLASSES {
                             total[h] += child[h];
                         }
@@ -1159,6 +1255,32 @@ fn map_action_bucket(kind: ActionKind) -> usize {
         ActionKind::Fold => 0,
         ActionKind::Check | ActionKind::Call => 1,
         ActionKind::Bet | ActionKind::Raise | ActionKind::AllIn => 2,
+    }
+}
+
+fn predict_optimal_sizing(board: &[Card]) -> f64 {
+    let mut suits = [0usize; 4];
+    let mut ranks = [0usize; 13];
+    let mut has_high = false;
+    for c in board {
+        suits[c.suit as usize] += 1;
+        ranks[c.rank as usize] += 1;
+        if c.rank >= 11 {
+            has_high = true;
+        }
+    }
+    let is_monotone = suits.iter().any(|&count| count >= 3);
+    let is_paired = ranks.iter().any(|&count| count >= 2);
+    let is_twotone = suits.iter().any(|&count| count == 2);
+
+    if is_monotone {
+        1.25
+    } else if is_paired || has_high {
+        0.33
+    } else if is_twotone {
+        0.75
+    } else {
+        0.50
     }
 }
 
@@ -1193,16 +1315,31 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
     let oop_dist = normalized_reach(&oop_weights, &classes, &board);
     let ip_dist = normalized_reach(&ip_weights, &classes, &board);
 
-    let equity_samples = if board.len() >= 5 {
-        1
-    } else if board.len() == 4 {
-        0 // enumerate all rivers
-    } else {
-        400
-    };
-    let (eq, runouts) = compute_equity(&classes, &board, equity_samples);
+    let leaf_net = crate::leaf_net::get_leaf_net();
+    let board_ranks: Vec<u8> = board.iter().map(|c| c.rank).collect();
+    let board_suits: Vec<u8> = board.iter().map(|c| c.suit).collect();
+    let board_features = crate::leaf_net::encode_board_cards(&board_ranks, &board_suits);
 
-    let mut bet_sizes: Vec<f64> = vec![0.33, 0.75];
+    let (eq, runouts) = if leaf_net.is_some() {
+        (Vec::new(), 0)
+    } else {
+        let equity_samples = if board.len() >= 5 {
+            1
+        } else if board.len() == 4 {
+            0 // enumerate all rivers
+        } else {
+            400
+        };
+        compute_equity(&classes, &board, equity_samples)
+    };
+
+    let mut bet_sizes: Vec<f64> = match input.bet_fraction {
+        Some(f) if f.is_finite() && f > 0.0 => vec![f.clamp(0.05, 5.0)],
+        _ => {
+            let s = predict_optimal_sizing(&board);
+            vec![s]
+        }
+    };
     bet_sizes.truncate(input.max_sizes_per_node.max(1));
     let mut ctx = BuildCtx {
         pot: input.pot,
@@ -1230,6 +1367,10 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
     let mut solver = Solver {
         tree: &mut tree,
         eq: &eq,
+        board_features,
+        range_o: &oop_dist,
+        range_i: &ip_dist,
+        leaf_net,
         pot: input.pot,
         rake_pct: (input.rake_percent / 100.0).max(0.0),
         rake_cap: input.rake_cap.max(0.0),
@@ -1250,8 +1391,8 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
             let (v_o, v_i) = solver.eval_profile(root, &oop_dist, &ip_dist, &avg);
             let ev_o = dot(&oop_dist, &v_o);
             let ev_i = dot(&ip_dist, &v_i);
-            let br_o_v = solver.best_response(root, 0, &ip_dist, &avg, [0.0, 0.0]);
-            let br_i_v = solver.best_response(root, 1, &oop_dist, &avg, [0.0, 0.0]);
+            let br_o_v = solver.best_response(root, 0, &ip_dist, &oop_dist, &avg, [0.0, 0.0]);
+            let br_i_v = solver.best_response(root, 1, &oop_dist, &ip_dist, &avg, [0.0, 0.0]);
             let br_o = dot(&oop_dist, &br_o_v);
             let br_i = dot(&ip_dist, &br_i_v);
             let nashconv = (br_o - ev_o) + (br_i - ev_i);
@@ -1277,12 +1418,25 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
     let ev_o = dot(&oop_dist, &v_o);
     let ev_i = dot(&ip_dist, &v_i);
 
+    let leaf_samples = if input.collect_leaves {
+        let mut out = Vec::new();
+        solver.collect_leaf_samples(root, &oop_dist, &ip_dist, &avg, &mut out);
+        out
+    } else {
+        Vec::new()
+    };
+
     // Snapshot scalar stats and release the mutable tree borrow before reading
     // the root node to build the response.
     let iterations = solver.iterations;
     let converged = solver.converged;
     let exploit_bb = solver.exploit_bb;
     let exploit_pct = solver.exploit_pct;
+    let leaf_mode = if solver.leaf_net.is_some() {
+        "leaf-net".to_string()
+    } else {
+        "exact-showdown".to_string()
+    };
     drop(solver);
     let tree_nodes = tree.nodes.len();
 
@@ -1436,6 +1590,8 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
         converged,
         tree_nodes,
         equity_samples: runouts,
+        leaf_samples,
+        leaf_mode,
     })
 }
 

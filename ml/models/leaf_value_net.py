@@ -1,13 +1,13 @@
 """
 ml/models/leaf_value_net.py
 
-Model 2 (Flop-to-Turn Leaf Value Model):
-Counterfactual value neural net that evaluates terminal leaf nodes at the end of the flop,
-removing the need to resolve turns/rivers during live flop solves.
-Estimates counterfactual EV vectors and equilibrium frequencies given board and reach ranges.
+Model 2 (Flop-to-Turn Counterfactual Leaf Value Network):
+Predicts range-conditioned 169-class counterfactual EV vectors (v_oop, v_ip)
+at flop-to-turn exit nodes directly inside the Rust solver.
+Replaces raw showdown equity evaluation with learned GTO terminal values.
 """
 
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -19,7 +19,7 @@ from ml.features import encode_board, encode_range
 class ResidualBlock(nn.Module):
     """Residual MLP block with LayerNorm, GELU, and skip connection."""
 
-    def __init__(self, dim: int, dropout: float = 0.05):
+    def __init__(self, dim: int, dropout: float = 0.02):
         super().__init__()
         self.fc1 = nn.Linear(dim, dim)
         self.ln1 = nn.LayerNorm(dim)
@@ -42,22 +42,21 @@ class LeafValueNet(nn.Module):
     """
     Model 2: Counterfactual Value Estimator for postflop leaf nodes.
     Input:
-      - Board features: 75 dims
-      - OOP Range: 169 dims
-      - IP Range: 169 dims
-      - Context (pot, stack, rake_pct, rake_cap): 4 dims
-      Total input dim = 417 dims.
+      - Board features: 75 dims (card one-hots, rank/suit histograms, texture flags)
+      - OOP Range reach: 169 dims
+      - IP Range reach: 169 dims
+      - Context: 5 dims (pot, invested_oop, invested_ip, net_pot, rake_pct)
+      Total input dim = 75 + 169 + 169 + 5 = 418 dims.
     Outputs:
-      - oop_ev (scalar, in BB)
-      - ip_ev (scalar, in BB)
-      - overall_frequencies (3-dim: fold, call, raise)
+      - v_oop: (batch, 169) counterfactual EV vector for OOP
+      - v_ip:  (batch, 169) counterfactual EV vector for IP
     """
 
     def __init__(
         self,
         board_dim: int = 75,
         range_dim: int = 169,
-        ctx_dim: int = 4,
+        ctx_dim: int = 5,
         hidden_dim: int = 256,
         num_res_blocks: int = 3,
     ):
@@ -76,20 +75,20 @@ class LeafValueNet(nn.Module):
             ResidualBlock(hidden_dim) for _ in range(num_res_blocks)
         ])
 
-        # EV Output Head (OOP EV, IP EV)
-        self.ev_head = nn.Sequential(
+        # OOP Counterfactual Value Head (169 hand classes)
+        self.head_oop = nn.Sequential(
             nn.Linear(hidden_dim, 128),
             nn.LayerNorm(128),
             nn.GELU(),
-            nn.Linear(128, 2),  # [oop_ev, ip_ev]
+            nn.Linear(128, 169),
         )
 
-        # Action Frequencies Head (Fold, Call, Raise)
-        self.freq_head = nn.Sequential(
-            nn.Linear(hidden_dim, 64),
-            nn.LayerNorm(64),
+        # IP Counterfactual Value Head (169 hand classes)
+        self.head_ip = nn.Sequential(
+            nn.Linear(hidden_dim, 128),
+            nn.LayerNorm(128),
             nn.GELU(),
-            nn.Linear(64, 3),  # [fold, call, raise]
+            nn.Linear(128, 169),
         )
 
     def forward(
@@ -98,65 +97,63 @@ class LeafValueNet(nn.Module):
         """
         Forward pass.
         Returns:
-          - ev_preds: (batch, 2) -> [oop_ev, ip_ev]
-          - freq_logits: (batch, 3) -> [fold, call, raise]
+          - v_oop: (batch, 169)
+          - v_ip:  (batch, 169)
         """
         h = self.input_proj(x)
         for block in self.blocks:
             h = block(h)
 
-        ev_preds = self.ev_head(h)
-        freq_logits = self.freq_head(h)
-        return ev_preds, freq_logits
+        v_oop = self.head_oop(h)
+        v_ip = self.head_ip(h)
+        return v_oop, v_ip
 
     @torch.no_grad()
     def evaluate_leaf(
         self,
         board: List[str],
-        oop_range: Dict[str, float],
-        ip_range: Dict[str, float],
+        reach_oop: Union[Dict[str, float], np.ndarray, List[float]],
+        reach_ip: Union[Dict[str, float], np.ndarray, List[float]],
+        invested_oop: float = 0.0,
+        invested_ip: float = 0.0,
         pot: float = 5.5,
-        effective_stack: float = 100.0,
         rake_pct: float = 5.0,
         rake_cap: float = 0.6,
-    ) -> Dict[str, float]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Evaluates a terminal leaf state during live solving in < 0.5ms.
-        Enforces value conservation: OOP EV + IP EV == Net Pot.
+        Evaluates a terminal leaf state during live solving in < 0.2ms.
+        Returns (v_oop, v_ip) as numpy arrays of 169 values each.
         """
         self.eval()
         board_vec = encode_board(board)
-        oop_vec = encode_range(oop_range)
-        ip_vec = encode_range(ip_range)
-        ctx_vec = np.array([pot, effective_stack, rake_pct, rake_cap], dtype=np.float32)
+
+        if isinstance(reach_oop, dict):
+            oop_vec = encode_range(reach_oop)
+        else:
+            oop_vec = np.array(reach_oop, dtype=np.float32)
+
+        if isinstance(reach_ip, dict):
+            ip_vec = encode_range(reach_ip)
+        else:
+            ip_vec = np.array(reach_ip, dtype=np.float32)
+
+        tot_pot = pot + invested_oop + invested_ip
+        rake = min(tot_pot * (rake_pct / 100.0), rake_cap)
+        net_pot = tot_pot - rake
+
+        ctx_vec = np.array([
+            tot_pot / 10.0,
+            invested_oop / 10.0,
+            invested_ip / 10.0,
+            net_pot / 10.0,
+            rake_pct / 10.0,
+        ], dtype=np.float32)
 
         x_np = np.concatenate([board_vec, oop_vec, ip_vec, ctx_vec])
         x_tensor = torch.from_numpy(x_np).unsqueeze(0)
 
-        ev_preds, freq_logits = self.forward(x_tensor)
-        evs = ev_preds.squeeze(0).numpy()
-        freqs = F.softmax(freq_logits, dim=-1).squeeze(0).numpy()
+        v_oop_pred, v_ip_pred = self.forward(x_tensor)
+        v_oop = v_oop_pred.squeeze(0).numpy()
+        v_ip = v_ip_pred.squeeze(0).numpy()
 
-        # Zero-sum net pot conservation post-processing
-        expected_rake = min(pot * (rake_pct / 100.0), rake_cap)
-        net_pot = pot - expected_rake
-
-        oop_raw = float(evs[0])
-        ip_raw = float(evs[1])
-        raw_sum = oop_raw + ip_raw
-        if raw_sum > 0:
-            scale = net_pot / raw_sum
-            oop_ev = round(oop_raw * scale, 3)
-            ip_ev = round(net_pot - oop_ev, 3)
-        else:
-            oop_ev = round(net_pot * 0.45, 3)
-            ip_ev = round(net_pot * 0.55, 3)
-
-        return {
-            "oop_ev": oop_ev,
-            "ip_ev": ip_ev,
-            "net_pot": round(net_pot, 3),
-            "fold_freq": round(float(freqs[0]), 3),
-            "call_freq": round(float(freqs[1]), 3),
-            "raise_freq": round(float(freqs[2]), 3),
-        }
+        return v_oop, v_ip

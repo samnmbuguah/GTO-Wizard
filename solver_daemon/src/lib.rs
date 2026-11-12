@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 pub mod cfr;
+pub mod leaf_net;
 
 /// Standard normalized input payload adhering to Task 2 contract & SCHEMA.md
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -31,6 +32,14 @@ pub struct SolverInput {
     /// boards reach the target instead of being cut off.
     #[serde(default = "default_time_limit")]
     pub time_limit_ms: u64,
+    /// Ask the solver to return the per-class counterfactual values at every
+    /// showdown (flop/turn exit) node, under the averaged strategy.
+    #[serde(default)]
+    pub collect_leaves: bool,
+    /// If set, the tree uses this bet size (fraction of pot) instead of the
+    /// default 33%. The Python bridge fills it from Model 1.
+    #[serde(default)]
+    pub bet_fraction: Option<f64>,
 }
 
 pub fn default_pot() -> f64 { 6.5 }
@@ -48,6 +57,15 @@ pub struct ActionFrequencies {
     pub call: f64,
     #[serde(rename = "raise")]
     pub bet_raise: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct LeafSample {
+    pub invested: [f64; 2],
+    pub reach_oop: Vec<f64>,
+    pub reach_ip: Vec<f64>,
+    pub v_oop: Vec<f64>,
+    pub v_ip: Vec<f64>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -85,6 +103,12 @@ pub struct SolverOutput {
     /// Number of turn/river runouts used for the equity leaves.
     #[serde(default)]
     pub equity_samples: usize,
+    /// Per-class counterfactual values at every showdown leaf, when requested.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub leaf_samples: Vec<LeafSample>,
+    /// `exact-showdown` or `leaf-net`, depending on which exit evaluator ran.
+    #[serde(default)]
+    pub leaf_mode: String,
 }
 
 /// Runs the real CFR engine, falling back to the historical heuristic if the
@@ -284,6 +308,8 @@ pub fn evaluate_and_solve_heuristic(input: SolverInput) -> SolverOutput {
         converged: false,
         tree_nodes: 0,
         equity_samples: 0,
+        leaf_samples: Vec::new(),
+        leaf_mode: "heuristic".to_string(),
     }
 }
 

@@ -21,6 +21,9 @@ services:
     build:
       context: ./solver_daemon
       dockerfile: Dockerfile
+    volumes:
+      - ./solver_daemon/target/release/solver_daemon:/app/solver_daemon:ro
+      - ./ml/artifacts:/app/artifacts:ro
     ports:
       - "9998:9998"
     restart: unless-stopped

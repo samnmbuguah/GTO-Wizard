@@ -139,6 +139,7 @@ def make_record(board: List[str], res: Dict[str, Any], oop_range: Dict[str, floa
         "hand_ev": res.get("hand_ev", {}),
         "tree_nodes": int(res.get("tree_nodes", 0)),
         "equity_samples": int(res.get("equity_samples", 0)),
+        "leaf_samples": res.get("leaf_samples", []),
     }
 
 
@@ -206,6 +207,7 @@ def main() -> int:
         "time_limit_ms": args.time_limit_ms,
         "oop_range": oop_range,
         "ip_range": ip_range,
+        "collect_leaves": True,
     }
 
     shards: List[Tuple[int, List[List[str]]]] = []
@@ -286,13 +288,45 @@ def main() -> int:
     df = pd.DataFrame(records)
     df["board_str"] = df["board"].apply(lambda b: " ".join(b))
     for col in ("oop_range", "ip_range", "overall_frequencies", "strategy",
-                "strategy_detail", "hand_ev"):
+                "strategy_detail", "hand_ev", "leaf_samples"):
         df[f"{col}_json"] = df[col].apply(json.dumps)
     df.to_parquet(parquet_path, engine="pyarrow", compression="snappy", index=False)
 
-    print(f"\nWrote {len(df)} rows")
+    # Flatten and export dedicated leaf-value dataset
+    leaf_records = []
+    for r in records:
+        board = r["board"]
+        for idx, ls in enumerate(r.get("leaf_samples", [])):
+            inv_o = ls["invested"][0]
+            inv_i = ls["invested"][1]
+            tot_pot = args.pot + inv_o + inv_i
+            rake = min(tot_pot * args.rake_pct / 100.0, args.rake_cap)
+            net_p = tot_pot - rake
+            leaf_records.append({
+                "spot_id": f"{' '.join(board)}_leaf_{idx}",
+                "board": board,
+                "invested_oop": inv_o,
+                "invested_ip": inv_i,
+                "pot": tot_pot,
+                "net_pot": net_p,
+                "effective_stack": args.stack - max(inv_o, inv_i),
+                "rake_percent": args.rake_pct,
+                "rake_cap": args.rake_cap,
+                "reach_oop_json": json.dumps(ls["reach_oop"]),
+                "reach_ip_json": json.dumps(ls["reach_ip"]),
+                "v_oop_json": json.dumps(ls["v_oop"]),
+                "v_ip_json": json.dumps(ls["v_ip"]),
+            })
+
+    leaf_parquet_path = out.parent / "nl500_100bb_leaf_cfr.parquet"
+    leaf_df = pd.DataFrame(leaf_records)
+    leaf_df.to_parquet(leaf_parquet_path, engine="pyarrow", compression="snappy", index=False)
+
+    print(f"\nWrote {len(df)} root CFR rows")
     print(f"  {jsonl_path} ({jsonl_path.stat().st_size:,} bytes)")
     print(f"  {parquet_path} ({parquet_path.stat().st_size:,} bytes)")
+    print(f"Wrote {len(leaf_df)} leaf CFR rows")
+    print(f"  {leaf_parquet_path} ({leaf_parquet_path.stat().st_size:,} bytes)")
     return 0
 
 

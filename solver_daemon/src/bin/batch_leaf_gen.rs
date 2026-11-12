@@ -260,6 +260,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         target_d_ev: 0.005,
                         max_iterations: 200,
                         time_limit_ms: 1500,
+                        collect_leaves: false,
+                        bet_fraction: None,
                     };
 
                     let solve_start = Instant::now();
@@ -317,6 +319,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     target_d_ev: 0.005,
                     max_iterations: 200,
                     time_limit_ms: 1500,
+                    collect_leaves: false,
+                    bet_fraction: None,
                 };
 
                 let solve_start = Instant::now();
