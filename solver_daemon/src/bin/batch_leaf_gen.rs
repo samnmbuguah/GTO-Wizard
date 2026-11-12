@@ -259,6 +259,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         max_sizes_per_node: 1,
                         target_d_ev: 0.005,
                         max_iterations: 200,
+                        time_limit_ms: 1500,
                     };
 
                     let solve_start = Instant::now();
@@ -315,6 +316,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     max_sizes_per_node: 1,
                     target_d_ev: 0.005,
                     max_iterations: 200,
+                    time_limit_ms: 1500,
                 };
 
                 let solve_start = Instant::now();

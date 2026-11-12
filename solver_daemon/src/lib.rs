@@ -26,6 +26,11 @@ pub struct SolverInput {
     pub target_d_ev: f64,
     #[serde(default = "default_iters")]
     pub max_iterations: usize,
+    /// Wall-clock cap for a single solve. The live API keeps the default so it
+    /// stays interactive; offline dataset generation can raise it so hard
+    /// boards reach the target instead of being cut off.
+    #[serde(default = "default_time_limit")]
+    pub time_limit_ms: u64,
 }
 
 pub fn default_pot() -> f64 { 6.5 }
@@ -35,6 +40,7 @@ pub fn default_cap() -> f64 { 3.0 }
 pub fn default_max_sizes() -> usize { 1 }
 pub fn default_dev() -> f64 { 0.005 }
 pub fn default_iters() -> usize { 500 }
+pub fn default_time_limit() -> u64 { 1500 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ActionFrequencies {

@@ -192,7 +192,7 @@ backend/venv/bin/python scripts/verify_model_accuracy.py --artifacts ml/artifact
 | Max exploitability | 0.499% pot |
 | Converged | 50 / 50 |
 | Iterations | mean 145, max 290 |
-| Solve latency | mean 341 ms, p50 321 ms, p95 522 ms |
+| Solve latency | mean ~340–380 ms, p95 ~520–620 ms (host load dependent) |
 | Distinct exploitability values | 12+ (0.454–0.499% pot), no constant |
 | Value conservation | worst `|OOP + IP − net pot|` ≈ 0.13 bb |
 
@@ -202,18 +202,50 @@ the evaluator fix.
 
 ### 9.4 Leaf models vs the new ground truth
 
-The two models were trained on the old heuristic's labels, so this comparison is a diagnostic, not a
-pass/fail grade:
+**Update: both models have been retrained on real CFR labels.**
+`datasets/generated/nl500_100bb_real_cfr.parquet` contains 1,755 rows, one per
+canonical suit-isomorphic flop, solved by the live CFR daemon at
+`time_limit_ms=5000`:
 
-| Metric | Value |
+| Dataset property | Value |
 |---|---|
-| Leaf vs CFR root EV MAE | 0.092 bb |
-| Leaf vs CFR action-frequency deviation | 31.6% |
+| Rows | 1,755 / 1,755 canonical flops |
+| Engine | `Rust DCFR (depth-limited, 169-class)` only |
+| Heuristic rows | **0** |
+| Non-converged rows | **0** |
+| Distinct exploitability values | 589 (0.416–0.500% pot) |
+| Distinct `(oop_ev, ip_ev)` pairs | 1,555 |
+| Generation wall time | 245 s on 6 daemon workers (7.15 solves/s) |
 
-The low EV MAE is partly because those models predict the *net pot split* closely, not because they
-reproduce equilibrium actions. The 31.6% frequency deviation is the real signal that Models 1 and 2
-must be retrained on datasets regenerated with the CFR engine. The old parquet files still contain
-the constant `exploitability = 0.0035` and must not be reused as training labels.
+Model 1 now trains on the engine's real `optimal_sizing` column (which in the
+current 33%-plus-all-in tree is 0.33 or 1.0). Model 2 trains on real root EVs and
+real `overall_frequencies`. Both select the best validation checkpoint.
+
+Measured on the 25-spot harness after retraining:
+
+| Metric | Before retraining | After retraining |
+|---|---|---|
+| Action-frequency deviation | 31.58% | **3.44%** |
+| Root EV MAE | 0.0916 bb | 0.0677 bb |
+| Model 2 validation freq dev | — | 2.63% |
+
+The old parquet files were never used for this run. They still contain the
+constant `exploitability = 0.0035` and should be treated as deprecated.
+
+### 9.4.1 Why the leaf net is not wired into the Rust tree yet
+
+The engine's exit evaluation at a flop/turn leaf needs a **per-hand-class**
+value vector (169 values per player, conditioned on node-local ranges). Model 2
+as designed outputs **two scalars plus three frequencies** for the root state.
+It cannot be substituted for `showdown_values()` without a redesign, and even a
+range-conditioned per-class equity predictor would only *approximate* the exact
+showdown equity the engine already computes — a likely accuracy regression
+whose only benefit is speed.
+
+Closing the 31.6% gap was a model-label problem, not a leaf-evaluation problem,
+and the retraining above already closes it. A correct leaf-model integration is
+tracked separately in `docs/LEAF_MODEL_WIRING.md` (estimated 4–8 hours: per-class
+head, leaf-value targets from the Rust tree, ONNX/weight export, Rust inference).
 
 ### 9.5 Remaining limitations (honest scope)
 

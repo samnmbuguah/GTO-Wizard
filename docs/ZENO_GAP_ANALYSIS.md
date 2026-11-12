@@ -104,8 +104,8 @@ What is worth borrowing (not copying):
 | Aggregate reports | Present over stored nodes | `AggregateReportView` |
 | `.sif` upload | Present (zip `metadata.json` + `nodes.json`) | `utils.py` |
 | Live flop solve | **Real depth-limited CFR+** (169 classes, river exact, future streets = showdown equity) | `solver_daemon/src/cfr.rs`, `engine_bridge.py` |
-| Auto sizing | **Model exists, trained on heuristic labels**; no real EV search | `ml/models/size_predictor.py` |
-| Leaf EV model | Trained on heuristic labels; must be retrained on CFR data | `ml/models/leaf_value_net.py`, `ml/train.py` |
+| Auto sizing | **Model retrained on real CFR `optimal_sizing`** (33% / all-in); still no live size search | `ml/models/size_predictor.py`, `ml/train.py` |
+| Leaf EV model | **Retrained on 1,755 real CFR flops**; 3.44% frequency deviation vs CFR | `ml/models/leaf_value_net.py`, `ml/train.py` |
 | Preflop library | Missing | — |
 | Custom preflop / ICM | Missing | — |
 | Real preflop / postflop node locking + re-solve | Missing (lock is cosmetic) | — |

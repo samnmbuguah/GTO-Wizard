@@ -6,8 +6,11 @@ Training pipeline for Oleg's Two-Model ZenoSolver Architecture:
 - Model 1 (Bet Size Predictor): Single optimal bet sizing classifier for tree pruning.
 - Model 2 (Leaf Value Net): Flop-to-turn counterfactual EV and equilibrium frequencies estimator.
 
-Trains directly on the generated parquet dataset:
-datasets/generated/zeno_baseline_100bb_nl500.parquet
+Trains directly on the real-CFR parquet dataset:
+datasets/generated/nl500_100bb_real_cfr.parquet
+
+Model 1 uses the engine's reported `optimal_sizing` column as its target when
+present. The old heuristic target is kept only as a fallback for legacy files.
 """
 
 import os
@@ -34,6 +37,7 @@ from ml.features import (
     encode_board,
     encode_range,
     determine_optimal_bet_size,
+    optimal_sizing_to_class,
     CLASS_TO_SIZE,
     CANDIDATE_SIZES,
 )
@@ -55,6 +59,13 @@ class ZenoDataset(Dataset):
         rake_caps = self.df["rake_cap"].to_numpy(dtype=np.float32)
         oop_evs = self.df["oop_ev"].to_numpy(dtype=np.float32)
         ip_evs = self.df["ip_ev"].to_numpy(dtype=np.float32)
+        # Real CFR target for Model 1. Older heuristic datasets do not have this
+        # column, so fall back to the old heuristic only for those files.
+        real_sizing = (
+            self.df["optimal_sizing"].to_numpy(dtype=np.float32)
+            if "optimal_sizing" in self.df.columns
+            else None
+        )
 
         # Check if oop_range and ip_range exist as columns
         oop_ranges = self.df["oop_range"].tolist() if "oop_range" in self.df.columns else [{}] * len(df)
@@ -73,7 +84,10 @@ class ZenoDataset(Dataset):
             spr = stack / max(pot, 0.1)
             ctx_m1 = np.array([pot / 10.0, stack / 100.0, spr / 20.0, rake_pct / 10.0], dtype=np.float32)
             m1_x = np.concatenate([board_vec, ctx_m1])
-            m1_y = determine_optimal_bet_size(board, pot)
+            if real_sizing is not None:
+                m1_y = optimal_sizing_to_class(float(real_sizing[i]))
+            else:
+                m1_y = determine_optimal_bet_size(board, pot)
 
             # Model 2 features
             oop_r = oop_ranges[i]
@@ -144,6 +158,9 @@ def train_model1_size_predictor(
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     criterion = nn.CrossEntropyLoss()
 
+    best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+    best_val_acc = -1.0
+
     for epoch in range(1, epochs + 1):
         model.train()
         train_loss = 0.0
@@ -185,13 +202,18 @@ def train_model1_size_predictor(
         avg_train_loss = train_loss / total_train
         avg_val_loss = val_loss / total_val
 
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+
         if epoch % 5 == 0 or epoch == epochs:
             print(
                 f"  Epoch [{epoch:>2}/{epochs:>2}] | Train Loss: {avg_train_loss:.4f} | "
                 f"Train Acc: {train_acc:>5.1f}% | Val Loss: {avg_val_loss:.4f} | Val Acc: {val_acc:>5.1f}%"
             )
 
-    print("✅ Model 1 (Bet Size Predictor) successfully trained.")
+    model.load_state_dict(best_state)
+    print(f"✅ Model 1 (Bet Size Predictor) trained. Best val accuracy: {best_val_acc:.1f}%")
     return model
 
 
@@ -210,6 +232,9 @@ def train_model2_leaf_value_net(
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     huber_loss = nn.HuberLoss(delta=0.05)
     freq_loss_fn = nn.KLDivLoss(reduction="batchmean")
+
+    best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+    best_val_metric = float("inf")
 
     for epoch in range(1, epochs + 1):
         model.train()
@@ -247,29 +272,44 @@ def train_model2_leaf_value_net(
         model.eval()
         val_ev_loss = 0.0
         val_conservation_err = 0.0
+        val_freq_dev = 0.0
         total_val = 0
         with torch.no_grad():
             for batch in val_loader:
                 x = batch["m2_x"]
                 y_ev = batch["m2_ev_y"]
+                y_freq = batch["m2_freq_y"]
                 net_pot = batch["net_pot"]
-                pred_ev, _ = model(x)
+                pred_ev, pred_freq_logits = model(x)
                 val_ev_loss += huber_loss(pred_ev, y_ev).item() * len(x)
                 pred_sum = pred_ev.sum(dim=-1)
                 val_conservation_err += torch.mean(torch.abs(pred_sum - net_pot)).item() * len(x)
+                pred_freq = F.softmax(pred_freq_logits, dim=-1)
+                # Total-variation distance, same metric the verification harness uses.
+                val_freq_dev += (
+                    torch.abs(pred_freq - y_freq).sum(dim=-1).mean().item() * 0.5 * 100.0
+                ) * len(x)
                 total_val += len(x)
 
         avg_train_loss = train_ev_loss / total_train
         avg_val_loss = val_ev_loss / total_val
         avg_cons_err = val_conservation_err / total_val
+        avg_freq_dev = val_freq_dev / total_val
+
+        metric = avg_val_loss + 0.01 * avg_freq_dev
+        if metric < best_val_metric:
+            best_val_metric = metric
+            best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
 
         if epoch % 5 == 0 or epoch == epochs:
             print(
-                f"  Epoch [{epoch:>2}/{epochs:>2}] | Train EV Loss: {avg_train_loss:.5f} | "
-                f"Val EV Loss: {avg_val_loss:.5f} | Net Pot Delta: {avg_cons_err:.4f} bb"
+                f"  Epoch [{epoch:>3}/{epochs:>3}] | Train EV Loss: {avg_train_loss:.5f} | "
+                f"Val EV Loss: {avg_val_loss:.5f} | Net Pot Delta: {avg_cons_err:.4f} bb | "
+                f"Val Freq Dev: {avg_freq_dev:.2f}%"
             )
 
-    print("✅ Model 2 (Leaf Value Net) successfully trained.")
+    model.load_state_dict(best_state)
+    print(f"✅ Model 2 (Leaf Value Net) trained. Best val metric: {best_val_metric:.5f}")
     return model
 
 
@@ -278,7 +318,7 @@ def main():
     parser.add_argument(
         "--dataset",
         type=str,
-        default="datasets/generated/nl500_100bb_full.parquet",
+        default="datasets/generated/nl500_100bb_real_cfr.parquet",
         help="Path to generated parquet dataset",
     )
     parser.add_argument("--epochs-m1", type=int, default=15, help="Epochs for Bet Size Predictor")

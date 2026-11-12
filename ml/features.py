@@ -110,6 +110,14 @@ def encode_range(range_dict: Dict[str, float]) -> np.ndarray:
     return vec
 
 
+def optimal_sizing_to_class(size: float) -> int:
+    """Maps an engine-reported bet size (fraction of pot) to a candidate class."""
+    return min(
+        range(len(CANDIDATE_SIZES)),
+        key=lambda i: abs(CANDIDATE_SIZES[i] - float(size)),
+    )
+
+
 def determine_optimal_bet_size(board: List[str], pot: float) -> int:
     """
     Ground-truth heuristic for optimal bet size selection (Model 1 target):

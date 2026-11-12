@@ -6,18 +6,17 @@ Verification harness for the two-model architecture:
 - Model 1: Bet Size Predictor
 - Model 2: Flop-to-Turn Counterfactual Leaf Value Network
 
-The engine bridge now talks to the real CFR daemon, so the "ground truth" below
-is an actual best-response solve rather than the old if/else heuristic.
+The engine bridge talks to the real CFR daemon, so the "ground truth" below is
+an actual best-response solve. Both models are retrained on
+`datasets/generated/nl500_100bb_real_cfr.parquet`, generated from 1,755
+canonical flops solved by that daemon.
 
 Verification Checks:
 1. Exploitability (best response) audit across 50 canonical boards
-2. Leaf model vs. real CFR on 25 representative spots (MAE on EV & action dev)
+2. Leaf model vs. real CFR on 25 representative spots (residual error after
+   retraining on real CFR labels)
 3. Reference table for 5 canonical spots (for manual comparison; does not call
    ZenoSolver, whose Terms prohibit automated benchmarking)
-
-Note: Models 1 and 2 were trained on labels produced by the old heuristic. A
-large error in section 2 is expected and means they must be retrained on data
-regenerated with the CFR engine.
 """
 
 import os
@@ -345,8 +344,8 @@ def run_ground_truth_comparison(
     print(f"  • Root EV Mean Absolute Error (MAE) : {mae_ev:.4f} bb")
     print(f"  • Action Frequency Deviation (MAE)  : {mae_freq:.2f}%")
     print(
-        "  • These models were trained on the retired heuristic's labels. If the MAE\n"
-        "    is large, regenerate datasets/generated/* with the CFR engine and retrain."
+        "  • Models were retrained on nl500_100bb_real_cfr.parquet (real CFR\n"
+        "    labels). The numbers above are residual error, not the old heuristic gap."
     )
     print("=" * 100)
 

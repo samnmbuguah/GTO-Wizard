@@ -1240,7 +1240,7 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
     };
 
     let max_iters = input.max_iterations.max(1);
-    let time_limit_ms = 1500u128;
+    let time_limit_ms = input.time_limit_ms.max(1) as u128;
     let mut check_every = 10usize;
     for t in 1..=max_iters {
         solver.traverse(root, &oop_dist, &ip_dist, t as f64);
