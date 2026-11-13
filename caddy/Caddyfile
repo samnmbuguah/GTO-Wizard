@@ -1,5 +1,14 @@
 # Caddyfile for containerized deployment with automatic HTTPS
 gtowizard.2d5104a9.sslip.io, zenosolver.2d5104a9.sslip.io, 45.81.4.169.sslip.io {
+    # Block dotfile probes (e.g. /.netrc, /.env, /.ssh/*) while allowing ACME /.well-known/*
+    @dotfiles {
+        path /.*
+        not path /.well-known/*
+    }
+    handle @dotfiles {
+        respond 404
+    }
+
     # Backend REST endpoints & admin
     handle /api/* {
         reverse_proxy backend:8000
@@ -16,6 +25,14 @@ gtowizard.2d5104a9.sslip.io, zenosolver.2d5104a9.sslip.io, 45.81.4.169.sslip.io 
 
 # Fallback for direct IP or local access over HTTP
 :80 {
+    @dotfiles {
+        path /.*
+        not path /.well-known/*
+    }
+    handle @dotfiles {
+        respond 404
+    }
+
     handle /api/* {
         reverse_proxy backend:8000
     }
