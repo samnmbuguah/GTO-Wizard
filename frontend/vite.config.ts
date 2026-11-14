@@ -6,7 +6,12 @@ const blockDotfiles = (): Plugin => ({
   configureServer(server) {
     server.middlewares.use((req, res, next) => {
       const urlPath = (req.url || '').split('?')[0]
-      if (urlPath.startsWith('/.') && !urlPath.startsWith('/.well-known/')) {
+      if (
+        (urlPath.startsWith('/.') && !urlPath.startsWith('/.well-known/')) ||
+        urlPath.startsWith('/etc/') ||
+        urlPath.startsWith('/proc/') ||
+        urlPath.includes('/.')
+      ) {
         res.statusCode = 404
         res.end('Not Found')
         return
@@ -23,6 +28,9 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 8089,
     allowedHosts: true,
+    hmr: {
+      overlay: false,
+    },
   },
   preview: {
     host: '0.0.0.0',
