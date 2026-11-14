@@ -232,20 +232,54 @@ Measured on the 25-spot harness after retraining:
 The old parquet files were never used for this run. They still contain the
 constant `exploitability = 0.0035` and should be treated as deprecated.
 
-### 9.4.1 Why the leaf net is not wired into the Rust tree yet
+### 9.4.1 Learned leaf evaluation (implemented 2026-11-14)
 
-The engine's exit evaluation at a flop/turn leaf needs a **per-hand-class**
-value vector (169 values per player, conditioned on node-local ranges). Model 2
-as designed outputs **two scalars plus three frequencies** for the root state.
-It cannot be substituted for `showdown_values()` without a redesign, and even a
-range-conditioned per-class equity predictor would only *approximate* the exact
-showdown equity the engine already computes — a likely accuracy regression
-whose only benefit is speed.
+The earlier version of this section said the leaf net was not wired. It is now
+implemented end to end; the design is documented in
+[`docs/LEAF_MODEL_WIRING.md`](LEAF_MODEL_WIRING.md).
 
-Closing the 31.6% gap was a model-label problem, not a leaf-evaluation problem,
-and the retraining above already closes it. A correct leaf-model integration is
-tracked separately in `docs/LEAF_MODEL_WIRING.md` (estimated 4–8 hours: per-class
-head, leaf-value targets from the Rust tree, ONNX/weight export, Rust inference).
+| Piece | State |
+|---|---|
+| Model | 422→256→128→two 169-way sigmoid heads (per-class equity shares) |
+| Targets | exact per-class CFV vectors from the Rust tree, `GTO_LEAF_NET=off` |
+| Training data | 10,001 unaugmented + 26,325 reach-perturbation leaf rows, 1,755 boards |
+| Runtime | native Rust inference (`solver_daemon/src/leaf_net.rs`), no ONNX runtime dependency |
+| Export | `ml/artifacts/leaf_value_net.onnx` (opset 18), `.onnx.data`, `.pt`, `_weights.bin` |
+
+Held-out leaf accuracy (296 unseen boards, 5,430 leaf rows, exact ground truth):
+
+| Metric | Value |
+|---|---|
+| Range-EV MAE, reach-weighted | **0.0168 bb** (p95 0.0506, max 0.353) |
+| Unaugmented rows | 0.0144 bb (n=1,455) |
+| Perturbed rows | 0.0177 bb (n=3,975) |
+| Normalised per-unit MAE logged during training | 0.178 bb (p95 0.605) |
+
+Leaves are evaluated once per public node from a short exact-equity warm-up and
+cached; re-evaluating from the live traversal reach every iteration makes the
+payoff strategy-dependent and CFR plateaus at 4–5% pot exploitability.
+
+**Safety gate.** A 169-vector marginal model cannot guarantee
+`Σ reach_oop·v_oop + Σ reach_ip·v_ip = net_pot` for arbitrary independent
+reaches. If a `leaf-net` solve misses either the 0.5% pot exploitability target
+or the 0.35 bb conservation tolerance, the daemon re-solves with exact showdown
+equity and returns `exact-showdown (leaf-net fallback)`. The reported latency
+includes both attempts, and the learned attempt is capped at 600 ms.
+
+**Measured on the 50 canonical boards** (`scripts/verify_model_accuracy.py`):
+
+| Mode | Pass | Leaf-net hits | Mean expl | Max expl | Mean latency | Worst gap |
+|---|---|---|---|---|---|---|
+| leaf-net + fallback | 50/50 | 27/50 | 0.441% pot | 0.499% pot | 223 ms (p95 385) | 0.322 bb |
+| leaf-net, frozen shares | 50/50 | 30/50 | 0.453% pot | 0.497% pot | 230 ms | 0.341 bb |
+| exact showdown | 50/50 | — | 0.422% pot | 0.489% pot | 142 ms | 0.245 bb |
+
+So the model is accurate enough to be used on a majority of boards, and the
+exact path covers the remainder without violating the published contract. The
+next step for making the learned path the default is a board-conditioned
+antisymmetric **pair-equity operator** (169×169, `E[i][j] + E[j][i] = 1`), which
+conserves the pot exactly for any reaches; the current marginal model is kept
+because it is small and easy to audit.
 
 ### 9.5 Remaining limitations (honest scope)
 
@@ -253,6 +287,8 @@ head, leaf-value targets from the Rust tree, ONNX/weight export, Rust inference)
   equity number. They do not model turn/river betting, so their strategies are not a full
   multi-street equilibrium and can differ from a full postflop solve.
 - **169 classes, not 1,326 combos.** Suit/blocker effects within a class are averaged.
+- **Learned leaves are approximate.** The marginal share model cannot conserve the pot for
+  arbitrary reaches; boards that miss the gate transparently retry with exact showdown equity.
 - **Single bet size plus all-in.** The tree uses a 33% pot bet (the API's default sizing); it does
   not yet search arbitrary sizes or multiple sizings per node.
 - **No card bunching**, no node locking, no ICM, no PLO.

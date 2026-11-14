@@ -790,6 +790,12 @@ fn normalized_reach(
     mass
 }
 
+#[derive(Clone)]
+struct LeafShares {
+    t_o: Vec<f64>,
+    t_i: Vec<f64>,
+}
+
 struct Solver<'a> {
     tree: &'a mut Tree,
     eq: &'a [f32],
@@ -797,6 +803,13 @@ struct Solver<'a> {
     range_o: &'a [f64],
     range_i: &'a [f64],
     leaf_net: Option<&'static crate::leaf_net::LeafNet>,
+    /// Per-public-leaf equity shares, evaluated once from the average strategy
+    /// of a short exact-equity warm-up. A fixed vector per node keeps the leaf
+    /// payoff linear in the opponent's reach, which is what CFR and best
+    /// response require. Re-evaluating the net from the live traversal reach on
+    /// every iteration makes the payoff strategy-dependent and CFR does not
+    /// converge (measured: 4-5% pot exploitability plateau).
+    leaf_shares: Vec<Option<LeafShares>>,
     pot: f64,
     effective_stack: f64,
     ante_bb: f64,
@@ -817,23 +830,27 @@ impl<'a> Solver<'a> {
 
     fn showdown_values(
         &self,
+        leaf_key: usize,
         invested: [f64; 2],
         reach_o: &[f64],
         reach_i: &[f64],
     ) -> (Vec<f64>, Vec<f64>) {
         if let Some(net) = self.leaf_net {
-            return net.evaluate_leaf(
-                &self.board_features,
-                reach_o,
-                reach_i,
-                invested,
-                self.pot,
-                self.effective_stack,
-                self.ante_bb,
-                self.rake_pct * 100.0, // percent
-                self.rake_cap,
-                self.num_folded_players,
-            );
+            if let Some(shares) = self.leaf_shares.get(leaf_key).and_then(|s| s.as_ref()) {
+                return crate::leaf_net::LeafNet::shares_to_values(
+                    &shares.t_o,
+                    &shares.t_i,
+                    invested,
+                    self.pot,
+                    self.rake_pct * 100.0,
+                    self.rake_cap,
+                    reach_o,
+                    reach_i,
+                );
+            }
+            // Not cached yet (warm-up phase): use exact equity so the shares
+            // are later evaluated from a sensible average strategy.
+            let _ = net;
         }
 
         let total = self.pot + invested[0] + invested[1];
@@ -945,7 +962,7 @@ impl<'a> Solver<'a> {
 
         match info {
             NodeInfo::Fold(p) => self.fold_values(invested, p, reach_o, reach_i),
-            NodeInfo::Showdown => self.showdown_values(invested, reach_o, reach_i),
+            NodeInfo::Showdown => self.showdown_values(idx, invested, reach_o, reach_i),
             NodeInfo::Decision {
                 player: p,
                 n_actions,
@@ -1087,7 +1104,7 @@ impl<'a> Solver<'a> {
             NodeKind::Fold { .. } => {}
             NodeKind::Showdown => {
                 let invested = self.tree.nodes[idx].invested;
-                let (v_oop, v_ip) = self.showdown_values(invested, reach_o, reach_i);
+                let (v_oop, v_ip) = self.showdown_values(idx, invested, reach_o, reach_i);
                 out.push(LeafSample {
                     invested,
                     reach_oop: reach_o.to_vec(),
@@ -1125,6 +1142,125 @@ impl<'a> Solver<'a> {
         }
     }
 
+    /// Evaluates the leaf net once per public showdown node using the average
+    /// strategy's node-local ranges, and stores the resulting equity shares.
+    /// The solver then treats those shares as fixed terminal values.
+    fn fill_leaf_shares(
+        &mut self,
+        idx: usize,
+        reach_o: &[f64],
+        reach_i: &[f64],
+        avg: &[Vec<Vec<f64>>],
+    ) {
+        enum Info {
+            Fold,
+            Showdown,
+            Decision {
+                player: usize,
+                n_actions: usize,
+                children: Vec<usize>,
+            },
+        }
+
+        let info = match &self.tree.nodes[idx].kind {
+            NodeKind::Fold { .. } => Info::Fold,
+            NodeKind::Showdown => Info::Showdown,
+            NodeKind::Decision {
+                player,
+                actions,
+                children,
+                ..
+            } => Info::Decision {
+                player: *player,
+                n_actions: actions.len(),
+                children: children.clone(),
+            },
+        };
+
+        match info {
+            Info::Fold => {}
+            Info::Showdown => {
+                let net = self.leaf_net;
+                if let Some(net) = net {
+                    let invested = self.tree.nodes[idx].invested;
+                    if let Some((t_o, t_i)) = net.evaluate_shares(
+                        &self.board_features,
+                        reach_o,
+                        reach_i,
+                        invested,
+                        self.pot,
+                        self.effective_stack,
+                        self.ante_bb,
+                        self.rake_pct * 100.0,
+                        self.rake_cap,
+                        self.num_folded_players,
+                    ) {
+                        // Damped update. The shares and the strategy they are
+                        // evaluated at form a fixed point; a full jump can
+                        // oscillate, so move halfway on every refresh.
+                        if let Some(old) = self.leaf_shares[idx].as_ref() {
+                            let alpha = 0.1;
+                            let blended_o: Vec<f64> = old
+                                .t_o
+                                .iter()
+                                .zip(t_o.iter())
+                                .map(|(a, b)| (1.0 - alpha) * a + alpha * b)
+                                .collect();
+                            let blended_i: Vec<f64> = old
+                                .t_i
+                                .iter()
+                                .zip(t_i.iter())
+                                .map(|(a, b)| (1.0 - alpha) * a + alpha * b)
+                                .collect();
+                            self.leaf_shares[idx] = Some(LeafShares {
+                                t_o: blended_o,
+                                t_i: blended_i,
+                            });
+                        } else {
+                            self.leaf_shares[idx] = Some(LeafShares { t_o, t_i });
+                        }
+                    }
+                }
+            }
+            Info::Decision {
+                player: p,
+                n_actions,
+                children,
+            } => {
+                let strat = &avg[idx];
+                for a in 0..n_actions {
+                    let (ro, ri) = if p == 0 {
+                        let mut ro = vec![0.0; N_CLASSES];
+                        for h in 0..N_CLASSES {
+                            ro[h] = reach_o[h] * strat[h][a];
+                        }
+                        (ro, reach_i.to_vec())
+                    } else {
+                        let mut ri = vec![0.0; N_CLASSES];
+                        for h in 0..N_CLASSES {
+                            ri[h] = reach_i[h] * strat[h][a];
+                        }
+                        (reach_o.to_vec(), ri)
+                    };
+                    self.fill_leaf_shares(children[a], &ro, &ri, avg);
+                }
+            }
+        }
+    }
+
+    fn reset_strategy(&mut self) {
+        for node in self.tree.nodes.iter_mut() {
+            if let NodeKind::Decision { regrets, avg, .. } = &mut node.kind {
+                for row in regrets.iter_mut() {
+                    row.fill(0.0);
+                }
+                for row in avg.iter_mut() {
+                    row.fill(0.0);
+                }
+            }
+        }
+    }
+
     fn eval_profile(
         &self,
         idx: usize,
@@ -1137,7 +1273,7 @@ impl<'a> Solver<'a> {
                 self.fold_values(self.tree.nodes[idx].invested, *player, reach_o, reach_i)
             }
             NodeKind::Showdown => {
-                self.showdown_values(self.tree.nodes[idx].invested, reach_o, reach_i)
+                self.showdown_values(idx, self.tree.nodes[idx].invested, reach_o, reach_i)
             }
             NodeKind::Decision {
                 player,
@@ -1217,35 +1353,21 @@ impl<'a> Solver<'a> {
                 v
             }
             NodeKind::Showdown => {
-                if let Some(net) = self.leaf_net {
-                    let (v_o, v_i) = if br_player == 0 {
-                        net.evaluate_leaf(
-                            &self.board_features,
-                            reach_self,
-                            reach_opp,
-                            self.tree.nodes[idx].invested,
-                            self.pot,
-                            self.effective_stack,
-                            self.ante_bb,
-                            self.rake_pct * 100.0,
-                            self.rake_cap,
-                            self.num_folded_players,
-                        )
+                if let Some(shares) = self.leaf_shares.get(idx).and_then(|s| s.as_ref()) {
+                    let invested = self.tree.nodes[idx].invested;
+                    let m_opp: f64 = reach_opp.iter().sum();
+                    let total = self.pot + invested[0] + invested[1];
+                    let pot_net = total - self.rake_for(invested);
+                    let t = if br_player == 0 {
+                        &shares.t_o
                     } else {
-                        net.evaluate_leaf(
-                            &self.board_features,
-                            reach_opp,
-                            reach_self,
-                            self.tree.nodes[idx].invested,
-                            self.pot,
-                            self.effective_stack,
-                            self.ante_bb,
-                            self.rake_pct * 100.0,
-                            self.rake_cap,
-                            self.num_folded_players,
-                        )
+                        &shares.t_i
                     };
-                    return if br_player == 0 { v_o } else { v_i };
+                    let mut v = vec![0.0; N_CLASSES];
+                    for h in 0..N_CLASSES {
+                        v[h] = (t[h] * pot_net - invested[br_player]) * m_opp;
+                    }
+                    return v;
                 }
 
                 let r_opp: f64 = reach_opp.iter().sum();
@@ -1392,14 +1514,16 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
     let oop_dist = normalized_reach(&oop_weights, &classes, &board, &bunching_weights);
     let ip_dist = normalized_reach(&ip_weights, &classes, &board, &bunching_weights);
 
-    let leaf_net = crate::leaf_net::get_leaf_net();
+    let leaf_net = if input.force_exact {
+        None
+    } else {
+        crate::leaf_net::get_leaf_net()
+    };
     let board_ranks: Vec<u8> = board.iter().map(|c| c.rank).collect();
     let board_suits: Vec<u8> = board.iter().map(|c| c.suit).collect();
     let board_features = crate::leaf_net::encode_board_cards(&board_ranks, &board_suits);
 
-    let (eq, runouts) = if leaf_net.is_some() {
-        (Vec::new(), 0)
-    } else {
+    let (eq, runouts) = {
         let equity_samples = if board.len() >= 5 {
             1
         } else if board.len() == 4 {
@@ -1441,6 +1565,7 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
         root,
     };
 
+    let n_nodes = tree.nodes.len();
     let mut solver = Solver {
         tree: &mut tree,
         eq: &eq,
@@ -1448,6 +1573,7 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
         range_o: &oop_dist,
         range_i: &ip_dist,
         leaf_net,
+        leaf_shares: vec![None; n_nodes],
         pot: input.pot,
         effective_stack: input.effective_stack,
         ante_bb: input.ante_bb.max(0.0),
@@ -1462,8 +1588,37 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
 
     let max_iters = input.max_iterations.max(1);
     let time_limit_ms = input.time_limit_ms.max(1) as u128;
+    // A learned-leaf attempt can be discarded and retried with exact equity.
+    // Cap the learned attempt so the worst-case roundtrip (attempt + retry)
+    // still fits the sub-second contract.
+    let attempt_deadline = if leaf_net.is_some() {
+        time_limit_ms.min(600)
+    } else {
+        time_limit_ms
+    };
+
+    // Seed the leaf net from a short exact-equity solve. Evaluating it once per
+    // public leaf (instead of every traversal) keeps the terminal payoff
+    // stationary and linear in the opponent's reach, which CFR needs.
+    let warmup_iters = if leaf_net.is_some() {
+        (max_iters / 8)
+            .clamp(10, 40)
+            .min(max_iters.saturating_sub(1) / 2)
+            .max(if max_iters > 1 { 1 } else { 0 })
+    } else {
+        0
+    };
+    for t in 1..=warmup_iters {
+        solver.traverse(root, &oop_dist, &ip_dist, t as f64);
+        solver.iterations = t;
+    }
+    if warmup_iters > 0 {
+        let avg = solver.average_strategy();
+        solver.fill_leaf_shares(root, &oop_dist, &ip_dist, &avg);
+    }
+
     let mut check_every = 10usize;
-    for t in 1..=max_iters {
+    for t in (warmup_iters + 1)..=max_iters {
         solver.traverse(root, &oop_dist, &ip_dist, t as f64);
         solver.iterations = t;
         if t % check_every == 0 || t == max_iters {
@@ -1483,7 +1638,7 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
                 solver.converged = true;
                 break;
             }
-            if start.elapsed().as_millis() >= time_limit_ms {
+            if start.elapsed().as_millis() >= attempt_deadline {
                 break;
             }
             // Keep the expensive BR check from dominating tiny runs.
@@ -1493,7 +1648,56 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
         }
     }
 
-    let avg = solver.average_strategy();
+    let mut last_avg = solver.average_strategy();
+    let refine_enabled = std::env::var("GTO_LEAF_REFINE")
+        .map(|v| v != "0" && v.to_lowercase() != "off")
+        .unwrap_or(true);
+    if leaf_net.is_some() && refine_enabled {
+        // Fixed-point refinement: refreshing the leaf shares changes the game,
+        // so re-measure and let CFR adapt until the shares and the strategy
+        // agree. Without this, the reported strategy would be optimal for the
+        // previous cache, not the one it is evaluated with.
+        let refine_deadline = attempt_deadline.min(500);
+        let mut rounds = 0usize;
+        loop {
+            last_avg = solver.average_strategy();
+            solver.fill_leaf_shares(root, &oop_dist, &ip_dist, &last_avg);
+
+            let (rv_o, rv_i) = solver.eval_profile(root, &oop_dist, &ip_dist, &last_avg);
+            let rev_o = dot(&oop_dist, &rv_o);
+            let rev_i = dot(&ip_dist, &rv_i);
+            let br_o_v = solver.best_response(root, 0, &ip_dist, &oop_dist, &last_avg, [0.0, 0.0]);
+            let br_i_v = solver.best_response(root, 1, &oop_dist, &ip_dist, &last_avg, [0.0, 0.0]);
+            let br_o = dot(&oop_dist, &br_o_v);
+            let br_i = dot(&ip_dist, &br_i_v);
+            let nashconv = (br_o - rev_o) + (br_i - rev_i);
+            solver.exploit_bb = (nashconv / 2.0).max(0.0);
+            solver.exploit_pct = solver.exploit_bb / input.pot.max(1e-9);
+            solver.converged = solver.exploit_pct <= input.target_d_ev.max(1e-6);
+
+            if solver.converged
+                || rounds >= 15
+                || start.elapsed().as_millis() >= refine_deadline
+                || solver.iterations >= max_iters
+            {
+                break;
+            }
+
+            // Solve the refreshed game from scratch: the leaf values changed,
+            // so regrets and the average strategy from the previous game are
+            // no longer the right warm start.
+            solver.reset_strategy();
+            let block = 30.min(max_iters.saturating_sub(solver.iterations));
+            for _ in 0..block {
+                solver.iterations += 1;
+                let t = solver.iterations as f64;
+                solver.traverse(root, &oop_dist, &ip_dist, t);
+            }
+            rounds += 1;
+        }
+    }
+
+    let avg = last_avg;
     let (v_o, v_i) = solver.eval_profile(root, &oop_dist, &ip_dist, &avg);
     let ev_o = dot(&oop_dist, &v_o);
     let ev_i = dot(&ip_dist, &v_i);
@@ -1512,7 +1716,7 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
     let converged = solver.converged;
     let exploit_bb = solver.exploit_bb;
     let exploit_pct = solver.exploit_pct;
-    let leaf_mode = if solver.leaf_net.is_some() {
+    let leaf_mode = if solver.leaf_net.is_some() && solver.leaf_shares.iter().any(|s| s.is_some()) {
         "leaf-net".to_string()
     } else {
         "exact-showdown".to_string()
@@ -1672,6 +1876,11 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
         equity_samples: runouts,
         leaf_samples,
         leaf_mode,
+        equity_matrix: if input.collect_equity {
+            eq.clone()
+        } else {
+            Vec::new()
+        },
     })
 }
 

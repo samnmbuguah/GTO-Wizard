@@ -265,6 +265,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         ante_bb: 0.0,
                         num_folded_players: 4,
                         use_bunching: true,
+                        collect_equity: false,
+                        force_exact: false,
                     };
 
                     let solve_start = Instant::now();
@@ -327,6 +329,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ante_bb: 0.0,
                     num_folded_players: 4,
                     use_bunching: true,
+                    collect_equity: false,
+                    force_exact: false,
                 };
 
                 let solve_start = Instant::now();

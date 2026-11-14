@@ -105,14 +105,14 @@ What is worth borrowing (not copying):
 | `.sif` upload | Present (zip `metadata.json` + `nodes.json`) | `utils.py` |
 | Live flop solve | **Real depth-limited CFR+** (169 classes, river exact, future streets = showdown equity) | `solver_daemon/src/cfr.rs`, `engine_bridge.py` |
 | Auto sizing | **Model retrained on real CFR `optimal_sizing`** (33% / all-in); still no live size search | `ml/models/size_predictor.py`, `ml/train.py` |
-| Leaf EV model | **Retrained on 1,755 real CFR flops**; 3.44% frequency deviation vs CFR | `ml/models/leaf_value_net.py`, `ml/train.py` |
+| Leaf EV model | **Wired into the Rust solver**: range-conditioned 169-class equity-share net with native inference; exact-showdown fallback if gates are missed | `ml/models/leaf_value_net.py`, `solver_daemon/src/leaf_net.rs` |
 | Preflop library | Missing | — |
 | Custom preflop / ICM | Missing | — |
 | Real preflop / postflop node locking + re-solve | Missing (lock is cosmetic) | — |
 | River reports | Missing | — |
 | Play vs. solver with EV loss | Missing (quiz only) | — |
 | Hand history analyzer | Missing | — |
-| Card bunching | Missing | — |
+| Card bunching | **Implemented** (rank-weighted removal via `num_folded_players`) | `solver_daemon/src/cfr.rs` (`card_bunching_weights`) |
 | PLO | Missing | — |
 | My trees / saved custom solves | Partial (solutions table) | — |
 | Share links | Missing | — |

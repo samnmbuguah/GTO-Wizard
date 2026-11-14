@@ -32,20 +32,26 @@ from typing import Any, Dict, List, Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-BOARDS: List[List[str]] = [
-    ["Ah", "Kd", "2c"],
-    ["As", "Qh", "5d"],
-    ["Kh", "Qd", "4c"],
-    ["9s", "8h", "7s"],
-    ["9d", "8c", "7h"],
-    ["8s", "7c", "6d"],
-    ["8s", "8h", "2c"],
-    ["Js", "Jd", "4c"],
-    ["2s", "2c", "2d"],
-    ["Kh", "Th", "4h"],
-    ["Qs", "Jd", "4c"],
-    ["7d", "6d", "5d"],
-]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+try:
+    from scripts.canonical_boards import CANONICAL_50_BOARDS as BOARDS
+except Exception:  # pragma: no cover - keep the audit usable standalone
+    BOARDS: List[List[str]] = [
+        ["Ah", "Kd", "2c"],
+        ["As", "Qh", "5d"],
+        ["Kh", "Qd", "4c"],
+        ["9s", "8h", "7s"],
+        ["9d", "8c", "7h"],
+        ["8s", "7c", "6d"],
+        ["8s", "8h", "2c"],
+        ["Js", "Jd", "4c"],
+        ["2s", "2c", "2d"],
+        ["Kh", "Th", "4h"],
+        ["Qs", "Jd", "4c"],
+        ["7d", "6d", "5d"],
+    ]
 
 
 def post(base_url: str, payload: Dict[str, Any], timeout: int = 60) -> Dict[str, Any]:
@@ -132,7 +138,12 @@ def main() -> int:
         )
 
     expl_values = [pct(r) for r in rows if pct(r) is not None]
+    modes: Dict[str, int] = {}
+    for r in rows:
+        key = str(r.get("leaf_mode", "unknown"))
+        modes[key] = modes.get(key, 0) + 1
     print("-" * 96)
+    print("leaf evaluators: " + ", ".join(f"{k} {v}/{len(rows)}" for k, v in sorted(modes.items())))
     if not expl_values:
         print("VERDICT: FAIL - no exploitability returned.")
     elif len({round(v, 6) for v in expl_values}) == 1:

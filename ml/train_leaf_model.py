@@ -122,12 +122,20 @@ def make_batch(A, idx, groups, rng, mix_prob):
 
 def share_loss(model, x, ro, ri, to, ti):
     lo, li = model(x)
-    po, pi = torch.sigmoid(lo), torch.sigmoid(li)
-    po, pi = LeafValueNet.zero_sum_shares(po, pi, ro, ri)
-    # Uniform per-class error plus extra weight on classes actually in range.
+    po_raw, pi_raw = torch.sigmoid(lo), torch.sigmoid(li)
+    # Shape loss: compare the projected shares to the (exactly conserving)
+    # targets so the per-class equity profile is learned.
+    po, pi = LeafValueNet.zero_sum_shares(po_raw, pi_raw, ro, ri)
     w_o = 1.0 + 169.0 * ro
     w_i = 1.0 + 169.0 * ri
-    return ((w_o * (po - to) ** 2).mean() + (w_i * (pi - ti) ** 2).mean())
+    shape = ((w_o * (po - to) ** 2).mean() + (w_i * (pi - ti) ** 2).mean())
+
+    # Conservation loss: the raw sigmoid heads are what the Rust engine caches
+    # and evaluates at node-local reaches. If their reach-weighted sum drifts
+    # from 1, the root EV stops conserving the pot. Penalise that directly.
+    raw_sum = (ro * po_raw).sum(dim=1) + (ri * pi_raw).sum(dim=1)
+    conserve = ((raw_sum - 1.0) ** 2).mean()
+    return shape + 2.0 * conserve
 
 
 @torch.no_grad()
@@ -137,8 +145,9 @@ def evaluate_bb(model, A, idx):
     x = np.concatenate([A["board_feat"][idx], A["ro_n"][idx], A["ri_n"][idx], A["ctx"][idx]], axis=1)
     lo, li = model(torch.from_numpy(x))
     ro_n = A["ro_n"][idx].astype(np.float64); ri_n = A["ri_n"][idx].astype(np.float64)
-    to = torch.sigmoid(lo).numpy().astype(np.float64); ti = torch.sigmoid(li).numpy().astype(np.float64)
-    to, ti = LeafValueNet.zero_sum_shares(to, ti, ro_n, ri_n)
+    raw_o = torch.sigmoid(lo).numpy().astype(np.float64)
+    raw_i = torch.sigmoid(li).numpy().astype(np.float64)
+    to, ti = LeafValueNet.zero_sum_shares(raw_o, raw_i, ro_n, ri_n)
     net = A["net"][idx][:, None]; inv = A["inv"][idx]
     vo = (to * net - inv[:, :1]) * A["m_i"][idx][:, None]
     vi = (ti * net - inv[:, 1:]) * A["m_o"][idx][:, None]
@@ -148,11 +157,18 @@ def evaluate_bb(model, A, idx):
     ro_raw = ro_n * A["m_o"][idx][:, None]; ri_raw = ri_n * A["m_i"][idx][:, None]
     cons = np.abs((ro_raw * vo).sum(1) + (ri_raw * vi).sum(1)
                   - ((ro_raw * A["vo_true"][idx]).sum(1) + (ri_raw * A["vi_true"][idx]).sum(1)))
+    # Raw (unprojected) conservation drift the runtime engine would see if the
+    # same shares were evaluated at this reach. This is the quantity that drives
+    # the root EV gap, since the engine only projects once, at cache-fill time.
+    raw_gap_bb = np.abs((ro_n * raw_o).sum(1) + (ri_n * raw_i).sum(1) - 1.0) * \
+        A["net"][idx] * A["m_o"][idx] * A["m_i"][idx]
     share_mae = 0.5 * (np.abs(to - A["t_o"][idx]).mean() + np.abs(ti - A["t_i"][idx]).mean())
     return dict(share_mae=share_mae,
                 range_ev_mae_bb=0.5 * (np.abs(ev_o_pred - ev_o_true).mean() + np.abs(ev_i_pred - ev_i_true).mean()),
                 range_ev_p95_bb=float(np.percentile(np.abs(np.r_[ev_o_pred - ev_o_true, ev_i_pred - ev_i_true]), 95)),
-                conservation_err_bb=float(cons.max()))
+                conservation_err_bb=float(cons.max()),
+                raw_gap_mean_bb=float(raw_gap_bb.mean()),
+                raw_gap_max_bb=float(raw_gap_bb.max()))
 
 
 def export_binary_weights(model: LeafValueNet, out_path: Path):
@@ -173,7 +189,8 @@ def export_binary_weights(model: LeafValueNet, out_path: Path):
 def main():
     torch.set_num_threads(1)
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dataset", default=str(REPO_ROOT / "datasets/generated/nl500_100bb_leaf_cfr.parquet"))
+    ap.add_argument("--dataset", default=str(REPO_ROOT / "datasets/generated/nl500_100bb_leaf_cfr.parquet"),
+                    help="One parquet path, or several separated by commas")
     ap.add_argument("--epochs", type=int, default=25)
     ap.add_argument("--batch-size", type=int, default=256)
     ap.add_argument("--lr", type=float, default=1e-3)
@@ -183,7 +200,10 @@ def main():
 
     torch.manual_seed(0)
     rng = np.random.default_rng(0)
-    df = pd.read_parquet(args.dataset)
+    df = pd.concat(
+        [pd.read_parquet(p.strip()) for p in args.dataset.split(",") if p.strip()],
+        ignore_index=True,
+    )
     print(f"Loaded {len(df)} leaf records", flush=True)
     t0 = time.perf_counter()
     A = load_arrays(df)
@@ -225,7 +245,7 @@ def main():
             best_state = {k: v.clone() for k, v in model.state_dict().items()}
         print(f"ep {ep:>2}/{args.epochs} train {tot / len(perm):.5f} | val share MAE {m['share_mae']:.4f} | "
               f"range-EV MAE {m['range_ev_mae_bb']:.4f} bb (p95 {m['range_ev_p95_bb']:.4f}) | "
-              f"max conservation err {m['conservation_err_bb']:.2e} bb", flush=True)
+              f"raw gap mean/max {m['raw_gap_mean_bb']:.3f}/{m['raw_gap_max_bb']:.3f} bb", flush=True)
 
     model.load_state_dict(best_state)
     final = evaluate_bb(model, A, va_idx)
@@ -245,7 +265,7 @@ def main():
         torch.onnx.export(Shares(model).eval(), torch.randn(1, model.total_input_dim), str(out / "leaf_value_net.onnx"),
                           input_names=["input"], output_names=["equity_shares_338"],
                           dynamic_axes={"input": {0: "batch"}, "equity_shares_338": {0: "batch"}},
-                          opset_version=14)
+                          opset_version=18)
     except Exception as exc:
         print(f"ONNX export error: {exc}")
     export_binary_weights(model, out / "leaf_value_net_weights.bin")

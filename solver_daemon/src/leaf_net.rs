@@ -234,7 +234,18 @@ impl LeafNet {
         (v_oop, v_ip)
     }
 
-    pub fn evaluate_leaf(
+    /// Predicts the per-class equity-share vectors for one leaf state.
+    ///
+    /// The returned `t_o[i]` / `t_i[i]` are the fraction of the net pot that
+    /// class `i` wins against the opponent's *normalised* range. They are
+    /// projected so `sum(ro_n * t_o) + sum(ri_n * t_i) == 1`.
+    ///
+    /// Callers that need a stationary terminal payoff (CFR traversals, best
+    /// response) should evaluate these once per public leaf and then rebuild
+    /// the value vectors with [`shares_to_values`]. Evaluating them from the
+    /// live traversal reach every iteration makes the leaf payoff depend on the
+    /// strategy, which breaks the bilinearity CFR relies on.
+    pub fn evaluate_shares(
         &self,
         board_features: &[f32; 75],
         reach_o: &[f64],
@@ -246,27 +257,15 @@ impl LeafNet {
         rake_pct: f64,
         rake_cap: f64,
         num_folded_players: usize,
-    ) -> (Vec<f64>, Vec<f64>) {
+    ) -> Option<(Vec<f64>, Vec<f64>)> {
         let tot_pot = pot + invested[0] + invested[1];
         let rake = (tot_pot * (rake_pct / 100.0)).min(rake_cap);
         let net_pot = tot_pot - rake;
 
-        // The net is trained on NORMALIZED ranges and predicts each class's share
-        // of the net pot against the opponent's normalized range. Values are
-        // rebuilt exactly, so they scale linearly with the opponent's reach
-        // mass and are zero-sum after the projection below.
         let m_o: f64 = reach_o.iter().sum();
         let m_i: f64 = reach_i.iter().sum();
-        let mut v_o = vec![0.0f64; N_CLASSES];
-        let mut v_i = vec![0.0f64; N_CLASSES];
         if m_o <= 1e-12 || m_i <= 1e-12 {
-            // One side never reaches this leaf: every counterfactual value is
-            // multiplied by a zero opponent mass except the invested term.
-            for h in 0..N_CLASSES {
-                v_o[h] = -invested[0] * m_i;
-                v_i[h] = -invested[1] * m_o;
-            }
-            return (v_o, v_i);
+            return None;
         }
 
         let mut x = [0.0f32; INPUT_DIM];
@@ -287,8 +286,8 @@ impl LeafNet {
         x[base_ctx + 8] = (num_folded_players as f32) / 6.0;
 
         let (logit_o, logit_i) = self.forward(&x);
-        let mut t_o = [0.0f64; N_CLASSES];
-        let mut t_i = [0.0f64; N_CLASSES];
+        let mut t_o = vec![0.0f64; N_CLASSES];
+        let mut t_i = vec![0.0f64; N_CLASSES];
         let mut err = -1.0f64;
         for h in 0..N_CLASSES {
             t_o[h] = 1.0 / (1.0 + (-(logit_o[h] as f64)).exp());
@@ -298,10 +297,75 @@ impl LeafNet {
         // Zero-sum projection: sum(ro_n * t_o) + sum(ri_n * t_i) == 1.
         let half = err / 2.0;
         for h in 0..N_CLASSES {
-            v_o[h] = ((t_o[h] - half) * net_pot - invested[0]) * m_i;
-            v_i[h] = ((t_i[h] - half) * net_pot - invested[1]) * m_o;
+            t_o[h] -= half;
+            t_i[h] -= half;
+        }
+        Some((t_o, t_i))
+    }
+
+    /// Rebuilds per-class counterfactual values from cached shares.
+    ///
+    /// `v_o[i] = (t_o[i] * net_pot - invested_oop) * reach_ip_mass` and the
+    /// symmetric formula for IP. The result is linear in the opponent's reach
+    /// mass, which is exactly the shape CFR and best response expect. The
+    /// shares are refreshed from the solver's average strategy, so at the
+    /// reported solution they are self-consistent with the reaches in use.
+    pub fn shares_to_values(
+        t_o: &[f64],
+        t_i: &[f64],
+        invested: [f64; 2],
+        pot: f64,
+        rake_pct: f64,
+        rake_cap: f64,
+        reach_o: &[f64],
+        reach_i: &[f64],
+    ) -> (Vec<f64>, Vec<f64>) {
+        let tot_pot = pot + invested[0] + invested[1];
+        let rake = (tot_pot * (rake_pct / 100.0)).min(rake_cap);
+        let net_pot = tot_pot - rake;
+        let m_o: f64 = reach_o.iter().sum();
+        let m_i: f64 = reach_i.iter().sum();
+        let mut v_o = vec![0.0f64; N_CLASSES];
+        let mut v_i = vec![0.0f64; N_CLASSES];
+        for h in 0..N_CLASSES {
+            v_o[h] = (t_o[h] * net_pot - invested[0]) * m_i;
+            v_i[h] = (t_i[h] * net_pot - invested[1]) * m_o;
         }
         (v_o, v_i)
+    }
+
+    pub fn evaluate_leaf(
+        &self,
+        board_features: &[f32; 75],
+        reach_o: &[f64],
+        reach_i: &[f64],
+        invested: [f64; 2],
+        pot: f64,
+        effective_stack: f64,
+        ante_bb: f64,
+        rake_pct: f64,
+        rake_cap: f64,
+        num_folded_players: usize,
+    ) -> (Vec<f64>, Vec<f64>) {
+        match self.evaluate_shares(
+            board_features, reach_o, reach_i, invested, pot, effective_stack, ante_bb,
+            rake_pct, rake_cap, num_folded_players,
+        ) {
+            Some((t_o, t_i)) => Self::shares_to_values(
+                &t_o, &t_i, invested, pot, rake_pct, rake_cap, reach_o, reach_i,
+            ),
+            None => {
+                let m_o: f64 = reach_o.iter().sum();
+                let m_i: f64 = reach_i.iter().sum();
+                let mut v_o = vec![0.0f64; N_CLASSES];
+                let mut v_i = vec![0.0f64; N_CLASSES];
+                for h in 0..N_CLASSES {
+                    v_o[h] = -invested[0] * m_i;
+                    v_i[h] = -invested[1] * m_o;
+                }
+                (v_o, v_i)
+            }
+        }
     }
 }
 

@@ -49,6 +49,13 @@ pub struct SolverInput {
     /// Whether preflop card bunching / removal is active.
     #[serde(default = "default_use_bunching")]
     pub use_bunching: bool,
+    /// Diagnostic: return the exact 169x169 showdown equity matrix.
+    #[serde(default)]
+    pub collect_equity: bool,
+    /// Internal: skip the learned leaf net and use exact showdown equity.
+    /// Set by the retry path when the leaf net cannot meet the accuracy gates.
+    #[serde(default)]
+    pub force_exact: bool,
 }
 
 pub fn default_pot() -> f64 { 6.5 }
@@ -120,6 +127,9 @@ pub struct SolverOutput {
     /// `exact-showdown` or `leaf-net`, depending on which exit evaluator ran.
     #[serde(default)]
     pub leaf_mode: String,
+    /// Row-major 169x169 exact equity matrix, when requested.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub equity_matrix: Vec<f32>,
 }
 
 /// Runs the real CFR engine, falling back to the historical heuristic if the
@@ -127,7 +137,24 @@ pub struct SolverOutput {
 /// labelled so a caller cannot mistake it for a solved strategy.
 pub fn evaluate_and_solve(input: SolverInput) -> SolverOutput {
     match cfr::solve(&input) {
-        Ok(out) => out,
+        Ok(out) => {
+            // The learned leaf evaluator is an approximation of the exact
+            // showdown values. If it cannot meet the solver's own accuracy
+            // gates, retry the same spot with exact equity rather than return
+            // a strategy that violates the exploitability or conservation
+            // contract. The result is labelled so the caller can see it.
+            if out.leaf_mode == "leaf-net" && !leaf_result_passes(&out, &input) {
+                let leaf_ms = out.solve_time_ms;
+                let mut retry = input.clone();
+                retry.force_exact = true;
+                if let Ok(mut exact) = cfr::solve(&retry) {
+                    exact.solve_time_ms += leaf_ms;
+                    exact.leaf_mode = "exact-showdown (leaf-net fallback)".to_string();
+                    return exact;
+                }
+            }
+            out
+        }
         Err(err) => {
             eprintln!("CFR solve failed ({err}); returning heuristic preview");
             let mut out = evaluate_and_solve_heuristic(input);
@@ -136,6 +163,15 @@ pub fn evaluate_and_solve(input: SolverInput) -> SolverOutput {
             out
         }
     }
+}
+
+/// Acceptance gate for a learned-leaf solve. Mirrors the published contract:
+/// exploitability at or below the solve target and root EV conservation within
+/// 0.35 bb of the post-rake pot.
+fn leaf_result_passes(out: &SolverOutput, input: &SolverInput) -> bool {
+    let net_pot = input.pot - (input.pot * input.rake_percent / 100.0).min(input.rake_cap);
+    let gap = (out.oop_ev + out.ip_ev - net_pot).abs();
+    out.converged && out.exploitability_pct_pot <= 0.5 && gap <= 0.35
 }
 
 /// Historical heuristic table kept only as a clearly-labelled preview fallback.
@@ -321,6 +357,7 @@ pub fn evaluate_and_solve_heuristic(input: SolverInput) -> SolverOutput {
         equity_samples: 0,
         leaf_samples: Vec::new(),
         leaf_mode: "heuristic".to_string(),
+        equity_matrix: Vec::new(),
     }
 }
 

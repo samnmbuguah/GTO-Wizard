@@ -261,6 +261,10 @@ class EngineBridge:
             "btn_check_frequency": optional_float("btn_check_frequency"),
             "tree_nodes": int(res.get("tree_nodes", 0)),
             "equity_samples": int(res.get("equity_samples", 0)),
+            # Which exit evaluator produced the leaf values. One of
+            # "exact-showdown", "leaf-net", or the explicit
+            # "exact-showdown (leaf-net fallback)" safety retry.
+            "leaf_mode": str(res.get("leaf_mode", "unknown")),
         }
 
     async def _run_local_dls_solve(self, payload: Dict[str, Any], start_time: float) -> Dict[str, Any]:
