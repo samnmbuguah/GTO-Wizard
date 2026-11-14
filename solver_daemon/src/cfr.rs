@@ -906,32 +906,44 @@ impl<'a> Solver<'a> {
         let mut v_o = vec![0.0; N_CLASSES];
         let mut v_i = vec![0.0; N_CLASSES];
 
-        for h in 0..N_CLASSES {
-            if reach_i.iter().all(|x| *x == 0.0) {
-                v_o[h] = -invested[0] * r_i;
-                continue;
-            }
-            let mut share = 0.0;
-            let base = h * N_CLASSES;
-            for j in 0..N_CLASSES {
-                if reach_i[j] != 0.0 {
-                    share += reach_i[j] * self.eq[base + j] as f64;
-                }
-            }
-            v_o[h] = share * pot_net - invested[0] * r_i;
-        }
-        for j in 0..N_CLASSES {
-            if reach_o.iter().all(|x| *x == 0.0) {
-                v_i[j] = -invested[1] * r_o;
-                continue;
-            }
-            let mut share = 0.0;
+        if r_i <= 0.0 {
+            v_o.fill(-invested[0] * r_i);
+        } else {
+            let active_i: Vec<(usize, f64)> = reach_i
+                .iter()
+                .copied()
+                .enumerate()
+                .filter(|&(_, r)| r != 0.0)
+                .collect();
             for h in 0..N_CLASSES {
-                if reach_o[h] != 0.0 {
-                    share += reach_o[h] * (1.0 - self.eq[h * N_CLASSES + j] as f64);
+                let base = h * N_CLASSES;
+                let row = &self.eq[base..base + N_CLASSES];
+                let mut share = 0.0;
+                for &(j, r_ij) in &active_i {
+                    share += r_ij * row[j] as f64;
+                }
+                v_o[h] = share * pot_net - invested[0] * r_i;
+            }
+        }
+
+        if r_o <= 0.0 {
+            v_i.fill(-invested[1] * r_o);
+        } else {
+            let mut shares_i = [0.0f64; N_CLASSES];
+            for h in 0..N_CLASSES {
+                let r_oh = reach_o[h];
+                if r_oh == 0.0 {
+                    continue;
+                }
+                let base = h * N_CLASSES;
+                let row = &self.eq[base..base + N_CLASSES];
+                for j in 0..N_CLASSES {
+                    shares_i[j] += r_oh * (1.0 - row[j] as f64);
                 }
             }
-            v_i[j] = share * pot_net - invested[1] * r_o;
+            for j in 0..N_CLASSES {
+                v_i[j] = shares_i[j] * pot_net - invested[1] * r_o;
+            }
         }
         (v_o, v_i)
     }
