@@ -262,6 +262,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         time_limit_ms: 1500,
                         collect_leaves: false,
                         bet_fraction: None,
+                        ante_bb: 0.0,
+                        num_folded_players: 4,
+                        use_bunching: true,
                     };
 
                     let solve_start = Instant::now();
@@ -321,6 +324,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     time_limit_ms: 1500,
                     collect_leaves: false,
                     bet_fraction: None,
+                    ante_bb: 0.0,
+                    num_folded_players: 4,
+                    use_bunching: true,
                 };
 
                 let solve_start = Instant::now();

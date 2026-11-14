@@ -398,8 +398,48 @@ fn build_runouts(board: &[Card], samples: usize, rng: &mut Rng) -> Vec<Vec<Card>
     }
 }
 
+/// Per-rank relative survival weights in the remaining deck after `num_folded_players`
+/// fold typical 6-max/MTT preflop trash (~23% VPIP).
+/// Rank indices: 0='2', 1='3', ..., 12='A'.
+/// Normalized so the mean across all 13 ranks is 1.0.
+pub fn card_bunching_weights(num_folded_players: usize) -> [f64; 13] {
+    if num_folded_players == 0 {
+        return [1.0; 13];
+    }
+    const FOLD_RATES: [f64; 13] = [
+        0.87, 0.87, 0.87, 0.87, 0.87, // 2..6
+        0.84, 0.84,                   // 7..8
+        0.80,                         // 9
+        0.71,                         // T
+        0.67,                         // J
+        0.62,                         // Q
+        0.55,                         // K
+        0.44,                         // A
+    ];
+    let mean_fold: f64 = FOLD_RATES.iter().sum::<f64>() / 13.0;
+    let n = num_folded_players as f64;
+    let mut weights = [1.0f64; 13];
+    let mut sum = 0.0;
+    for r in 0..13 {
+        let p_removed = (2.0 / 50.0) * (FOLD_RATES[r] / mean_fold);
+        let surv = (1.0 - p_removed).max(0.01).powf(n);
+        weights[r] = surv;
+        sum += surv;
+    }
+    let mean_w = sum / 13.0;
+    for w in &mut weights {
+        *w /= mean_w;
+    }
+    weights
+}
+
 /// equity[i][j] = OOP class i's share (win = 1, tie = 0.5) against IP class j.
-fn compute_equity(classes: &[HandClass], board: &[Card], samples: usize) -> (Vec<f32>, usize) {
+fn compute_equity(
+    classes: &[HandClass],
+    board: &[Card],
+    samples: usize,
+    bunching_weights: &[f64; 13],
+) -> (Vec<f32>, usize) {
     let mut rng = Rng::new(
         board
             .iter()
@@ -410,6 +450,13 @@ fn compute_equity(classes: &[HandClass], board: &[Card], samples: usize) -> (Vec
     let mut counts = vec![0f32; N_CLASSES * N_CLASSES];
 
     for runout in &runouts {
+        let runout_w = if board.len() <= 3 {
+            (bunching_weights[runout[3].rank as usize] * bunching_weights[runout[4].rank as usize]) as f32
+        } else if board.len() == 4 {
+            bunching_weights[runout[4].rank as usize] as f32
+        } else {
+            1.0f32
+        };
         let used = board_mask(runout);
         let mut strengths = [0u32; N_CLASSES];
         let mut reps: [Option<(Card, Card)>; N_CLASSES] = [None; N_CLASSES];
@@ -440,14 +487,15 @@ fn compute_equity(classes: &[HandClass], board: &[Card], samples: usize) -> (Vec
                     continue;
                 }
                 let idx = i * N_CLASSES + j;
-                eq[idx] += if strengths[i] > strengths[j] {
-                    1.0
+                let win = if strengths[i] > strengths[j] {
+                    1.0f32
                 } else if strengths[i] == strengths[j] {
-                    0.5
+                    0.5f32
                 } else {
-                    0.0
+                    0.0f32
                 };
-                counts[idx] += 1.0;
+                eq[idx] += runout_w * win;
+                counts[idx] += runout_w;
             }
         }
     }
@@ -709,13 +757,23 @@ fn regret_strategy(regrets: &[Vec<f64>], n_actions: usize) -> Vec<Vec<f64>> {
     out
 }
 
-fn normalized_reach(weights: &[f64], classes: &[HandClass], board: &[Card]) -> Vec<f64> {
+fn normalized_reach(
+    weights: &[f64],
+    classes: &[HandClass],
+    board: &[Card],
+    bunching_weights: &[f64; 13],
+) -> Vec<f64> {
     let used = board_mask(board);
     let mut mass = vec![0.0; N_CLASSES];
     let mut total = 0.0;
     for h in 0..N_CLASSES {
-        let alive = classes[h].combos.iter().filter(|c| combo_alive(c, used)).count();
-        let w = weights[h].max(0.0) * alive as f64;
+        let alive_weight: f64 = classes[h]
+            .combos
+            .iter()
+            .filter(|c| combo_alive(c, used))
+            .map(|c| bunching_weights[c.0.rank as usize] * bunching_weights[c.1.rank as usize])
+            .sum();
+        let w = weights[h].max(0.0) * alive_weight;
         mass[h] = w;
         total += w;
     }
@@ -740,8 +798,11 @@ struct Solver<'a> {
     range_i: &'a [f64],
     leaf_net: Option<&'static crate::leaf_net::LeafNet>,
     pot: f64,
+    effective_stack: f64,
+    ante_bb: f64,
     rake_pct: f64,
     rake_cap: f64,
+    num_folded_players: usize,
     iterations: usize,
     converged: bool,
     exploit_pct: f64,
@@ -767,8 +828,11 @@ impl<'a> Solver<'a> {
                 reach_i,
                 invested,
                 self.pot,
+                self.effective_stack,
+                self.ante_bb,
                 self.rake_pct * 100.0, // percent
                 self.rake_cap,
+                self.num_folded_players,
             );
         }
 
@@ -1161,8 +1225,11 @@ impl<'a> Solver<'a> {
                             reach_opp,
                             self.tree.nodes[idx].invested,
                             self.pot,
+                            self.effective_stack,
+                            self.ante_bb,
                             self.rake_pct * 100.0,
                             self.rake_cap,
+                            self.num_folded_players,
                         )
                     } else {
                         net.evaluate_leaf(
@@ -1171,8 +1238,11 @@ impl<'a> Solver<'a> {
                             reach_self,
                             self.tree.nodes[idx].invested,
                             self.pot,
+                            self.effective_stack,
+                            self.ante_bb,
                             self.rake_pct * 100.0,
                             self.rake_cap,
+                            self.num_folded_players,
                         )
                     };
                     return if br_player == 0 { v_o } else { v_i };
@@ -1312,8 +1382,15 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
             ip_weights[i] = v.max(0.0);
         }
     }
-    let oop_dist = normalized_reach(&oop_weights, &classes, &board);
-    let ip_dist = normalized_reach(&ip_weights, &classes, &board);
+    let effective_folded = if input.use_bunching {
+        input.num_folded_players.min(8)
+    } else {
+        0
+    };
+    let bunching_weights = card_bunching_weights(effective_folded);
+
+    let oop_dist = normalized_reach(&oop_weights, &classes, &board, &bunching_weights);
+    let ip_dist = normalized_reach(&ip_weights, &classes, &board, &bunching_weights);
 
     let leaf_net = crate::leaf_net::get_leaf_net();
     let board_ranks: Vec<u8> = board.iter().map(|c| c.rank).collect();
@@ -1330,7 +1407,7 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
         } else {
             400
         };
-        compute_equity(&classes, &board, equity_samples)
+        compute_equity(&classes, &board, equity_samples, &bunching_weights)
     };
 
     let mut bet_sizes: Vec<f64> = match input.bet_fraction {
@@ -1372,8 +1449,11 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
         range_i: &ip_dist,
         leaf_net,
         pot: input.pot,
+        effective_stack: input.effective_stack,
+        ante_bb: input.ante_bb.max(0.0),
         rake_pct: (input.rake_percent / 100.0).max(0.0),
         rake_cap: input.rake_cap.max(0.0),
+        num_folded_players: effective_folded,
         iterations: 0,
         converged: false,
         exploit_pct: 1.0,
@@ -1638,11 +1718,22 @@ mod tests {
             .iter()
             .map(|s| Card::parse(s).unwrap())
             .collect();
-        let (eq, _) = compute_equity(&classes, &board, 400);
+        let (eq, _) = compute_equity(&classes, &board, 400, &card_bunching_weights(0));
         let aa = class_index("AA").unwrap();
         let kk = class_index("KK").unwrap();
         let e = eq[aa * N_CLASSES + kk];
         println!("eq AA vs KK on AhKd2c = {e}");
         assert!(e > 0.7, "AA should beat KK, got {e}");
+    }
+
+    #[test]
+    fn bunching_weights_enriches_broadways() {
+        let w0 = card_bunching_weights(0);
+        assert!((w0[0] - 1.0).abs() < 1e-12 && (w0[12] - 1.0).abs() < 1e-12);
+
+        let w4 = card_bunching_weights(4);
+        let mean: f64 = w4.iter().sum::<f64>() / 13.0;
+        assert!((mean - 1.0).abs() < 1e-9, "mean bunching weight must be 1.0, got {mean}");
+        assert!(w4[12] > w4[0], "Ace survival ({}) should exceed Deuce ({})", w4[12], w4[0]);
     }
 }

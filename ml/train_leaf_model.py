@@ -49,7 +49,7 @@ def load_arrays(df: pd.DataFrame):
     board_feat = np.zeros((n, 75), np.float32)
     ro_n = np.zeros((n, 169), np.float32)
     ri_n = np.zeros((n, 169), np.float32)
-    ctx = np.zeros((n, 5), np.float32)
+    ctx = np.zeros((n, 9), np.float32)
     t_o = np.zeros((n, 169), np.float32)
     t_i = np.zeros((n, 169), np.float32)
     m_o = np.zeros(n, np.float64)
@@ -67,7 +67,8 @@ def load_arrays(df: pd.DataFrame):
         if key not in cache:
             cache[key] = encode_board(b)
         board_feat[k] = cache[key]
-        board_key.append(key)
+        folded = int(getattr(r, "num_folded_players", 4))
+        board_key.append(f"{key}_{folded}")
         ro = np.array(json.loads(r.reach_oop_json), np.float64)
         ri = np.array(json.loads(r.reach_ip_json), np.float64)
         vo = np.array(json.loads(r.v_oop_json), np.float64)
@@ -83,8 +84,17 @@ def load_arrays(df: pd.DataFrame):
         if mi > EPS:
             ri_n[k] = ri / mi
             t_o[k] = (vo / mi + r.invested_oop) / r.net_pot
-        ctx[k] = (r.pot / 10.0, r.invested_oop / 10.0, r.invested_ip / 10.0,
-                  r.net_pot / 10.0, r.rake_percent / 10.0)
+        ctx[k] = (
+            r.pot / 10.0,
+            r.invested_oop / 10.0,
+            r.invested_ip / 10.0,
+            r.net_pot / 10.0,
+            float(getattr(r, "effective_stack", 100.0)) / 100.0,
+            float(getattr(r, "ante_bb", 0.0)),
+            r.rake_percent / 10.0,
+            float(getattr(r, "rake_cap", 0.6)) / 5.0,
+            folded / 6.0,
+        )
 
     valid = (m_o > EPS) & (m_i > EPS)
     return dict(board_feat=board_feat, ro_n=ro_n, ri_n=ri_n, ctx=ctx, t_o=np.clip(t_o, 0, 1),
@@ -232,7 +242,7 @@ def main():
             return torch.cat([torch.sigmoid(lo), torch.sigmoid(li)], dim=-1)
 
     try:
-        torch.onnx.export(Shares(model).eval(), torch.randn(1, 418), str(out / "leaf_value_net.onnx"),
+        torch.onnx.export(Shares(model).eval(), torch.randn(1, model.total_input_dim), str(out / "leaf_value_net.onnx"),
                           input_names=["input"], output_names=["equity_shares_338"],
                           dynamic_axes={"input": {0: "batch"}, "equity_shares_338": {0: "batch"}},
                           opset_version=14)

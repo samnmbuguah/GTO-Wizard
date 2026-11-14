@@ -20,13 +20,14 @@ class BetSizePredictor(nn.Module):
     Model 1: Predicts single optimal bet/raise size among [0.33, 0.50, 0.75, 1.25].
     Input:
       - Board features: 75 dims (card one-hot, rank/suit hist, texture indicators)
-      - Pot & stack context: 4 dims (pot, effective_stack, spr, rake_pct)
-      Total input dim = 79 dims.
+      - Generalized context: 7 dims
+        [stack_bb/100, pot_bb/10, spr/20, ante_bb, rake_pct/10, rake_cap/5, num_folded_players/6]
+      Total input dim = 82 dims.
     Output:
       - 4-dim logits over candidate sizes.
     """
 
-    def __init__(self, input_dim: int = 79, hidden_dim: int = 128, num_classes: int = 4):
+    def __init__(self, input_dim: int = 82, hidden_dim: int = 128, num_classes: int = 4):
         super().__init__()
         self.input_dim = input_dim
         self.num_classes = num_classes
@@ -56,7 +57,10 @@ class BetSizePredictor(nn.Module):
         board: List[str],
         pot: float = 5.5,
         effective_stack: float = 100.0,
+        ante_bb: float = 0.0,
         rake_pct: float = 5.0,
+        rake_cap: float = 0.6,
+        num_folded_players: int = 4,
     ) -> Tuple[float, np.ndarray]:
         """
         Inference helper: predicts single optimal sizing fraction and probability distribution.
@@ -65,7 +69,15 @@ class BetSizePredictor(nn.Module):
         self.eval()
         board_feats = encode_board(board)
         spr = effective_stack / max(pot, 0.1)
-        ctx_feats = np.array([pot / 10.0, effective_stack / 100.0, spr / 20.0, rake_pct / 10.0], dtype=np.float32)
+        ctx_feats = np.array([
+            effective_stack / 100.0,
+            pot / 10.0,
+            spr / 20.0,
+            ante_bb,
+            rake_pct / 10.0,
+            rake_cap / 5.0,
+            num_folded_players / 6.0,
+        ], dtype=np.float32)
         x_np = np.concatenate([board_feats, ctx_feats])
 
         x_tensor = torch.from_numpy(x_np).unsqueeze(0)

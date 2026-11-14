@@ -42,11 +42,12 @@ class LeafValueNet(nn.Module):
     """
     Model 2: range-conditioned leaf value estimator for flop/turn exit nodes.
 
-    Input (418 dims):
+    Input (422 dims):
       - Board features: 75
       - OOP reach, NORMALIZED to sum 1: 169
       - IP reach, NORMALIZED to sum 1: 169
-      - Context: 5 (total_pot/10, invested_oop/10, invested_ip/10, net_pot/10, rake_pct/10)
+      - Context: 9 (total_pot/10, invested_oop/10, invested_ip/10, net_pot/10,
+                    effective_stack/100, ante_bb, rake_pct/10, rake_cap/5, num_folded_players/6)
 
     Output: two 169-dim LOGIT vectors. sigmoid(logit) is the per-class share of
     the net pot that a hand wins against the opponent's normalized range
@@ -63,7 +64,7 @@ class LeafValueNet(nn.Module):
         self,
         board_dim: int = 75,
         range_dim: int = 169,
-        ctx_dim: int = 5,
+        ctx_dim: int = 9,
         hidden_dim: int = 256,
         num_res_blocks: int = 3,
     ):
@@ -105,11 +106,32 @@ class LeafValueNet(nn.Module):
         return t_o - err / 2.0, t_i - err / 2.0
 
     @staticmethod
-    def build_input(board, ro_n, ri_n, invested_oop, invested_ip, pot, rake_pct, rake_cap):
+    def build_input(
+        board,
+        ro_n,
+        ri_n,
+        invested_oop,
+        invested_ip,
+        pot,
+        rake_pct,
+        rake_cap,
+        effective_stack: float = 100.0,
+        ante_bb: float = 0.0,
+        num_folded_players: int = 4,
+    ):
         tot_pot = pot + invested_oop + invested_ip
         net_pot = tot_pot - min(tot_pot * rake_pct / 100.0, rake_cap)
-        ctx = np.array([tot_pot / 10.0, invested_oop / 10.0, invested_ip / 10.0,
-                        net_pot / 10.0, rake_pct / 10.0], dtype=np.float32)
+        ctx = np.array([
+            tot_pot / 10.0,
+            invested_oop / 10.0,
+            invested_ip / 10.0,
+            net_pot / 10.0,
+            effective_stack / 100.0,
+            ante_bb,
+            rake_pct / 10.0,
+            rake_cap / 5.0,
+            num_folded_players / 6.0,
+        ], dtype=np.float32)
         return np.concatenate([encode_board(board), ro_n, ri_n, ctx]).astype(np.float32), net_pot
 
     @torch.no_grad()
@@ -123,6 +145,9 @@ class LeafValueNet(nn.Module):
         pot: float = 5.5,
         rake_pct: float = 5.0,
         rake_cap: float = 0.6,
+        effective_stack: float = 100.0,
+        ante_bb: float = 0.0,
+        num_folded_players: int = 4,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Returns per-class counterfactual values (v_oop, v_ip) for UNNORMALIZED reaches,
@@ -140,7 +165,10 @@ class LeafValueNet(nn.Module):
         ro_n = ro / m_o if m_o > 1e-12 else np.zeros_like(ro)
         ri_n = ri / m_i if m_i > 1e-12 else np.zeros_like(ri)
 
-        x, net_pot = self.build_input(board, ro_n, ri_n, invested_oop, invested_ip, pot, rake_pct, rake_cap)
+        x, net_pot = self.build_input(
+            board, ro_n, ri_n, invested_oop, invested_ip, pot, rake_pct, rake_cap,
+            effective_stack=effective_stack, ante_bb=ante_bb, num_folded_players=num_folded_players,
+        )
         lo, li = self.forward(torch.from_numpy(x).unsqueeze(0))
         t_o = torch.sigmoid(lo)[0].numpy().astype(np.float64)
         t_i = torch.sigmoid(li)[0].numpy().astype(np.float64)

@@ -40,6 +40,15 @@ pub struct SolverInput {
     /// default 33%. The Python bridge fills it from Model 1.
     #[serde(default)]
     pub bet_fraction: Option<f64>,
+    /// Dead-money ante per player in bb (0.0 for cash, 0.125 for MTT).
+    #[serde(default)]
+    pub ante_bb: f64,
+    /// Number of folded preflop players for card bunching (e.g., 4 in 6-max BTN vs BB).
+    #[serde(default = "default_folded_players")]
+    pub num_folded_players: usize,
+    /// Whether preflop card bunching / removal is active.
+    #[serde(default = "default_use_bunching")]
+    pub use_bunching: bool,
 }
 
 pub fn default_pot() -> f64 { 6.5 }
@@ -50,6 +59,8 @@ pub fn default_max_sizes() -> usize { 1 }
 pub fn default_dev() -> f64 { 0.005 }
 pub fn default_iters() -> usize { 500 }
 pub fn default_time_limit() -> u64 { 1500 }
+pub fn default_folded_players() -> usize { 4 }
+pub fn default_use_bunching() -> bool { true }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ActionFrequencies {

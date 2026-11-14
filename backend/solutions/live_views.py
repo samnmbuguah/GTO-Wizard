@@ -45,8 +45,11 @@ class LiveSolveView(APIView):
         spot = request.data.get("spot", "BTN_vs_BB_SRP")
         pot = float(request.data.get("pot", 5.5))
         effective_stack = float(request.data.get("effective_stack", 100.0))
+        ante_bb = float(request.data.get("ante_bb", 0.0))
         rake_percent = float(request.data.get("rake_percent", 5.0))
         rake_cap = float(request.data.get("rake_cap", 0.6))
+        num_folded_players = int(request.data.get("num_folded_players", 4))
+        use_bunching = bool(request.data.get("use_bunching", True))
         open_size = float(request.data.get("open_size", 2.5))
 
         # Validate board
@@ -87,8 +90,11 @@ class LiveSolveView(APIView):
                     ip_range=ip_range,
                     pot=pot,
                     effective_stack=effective_stack,
+                    ante_bb=ante_bb,
                     rake_percent=rake_percent,
                     rake_cap=rake_cap,
+                    num_folded_players=num_folded_players,
+                    use_bunching=use_bunching,
                     max_bets_per_node=1
                 )
             )

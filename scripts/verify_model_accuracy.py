@@ -94,7 +94,7 @@ def load_trained_models(artifact_dir: Path) -> Tuple[BetSizePredictor, LeafValue
     if not m1_path.exists() or not m2_path.exists():
         raise FileNotFoundError(f"Missing model checkpoints: m1={m1_path.exists()}, m2={m2_path.exists()}")
 
-    m1 = BetSizePredictor(input_dim=79, hidden_dim=128, num_classes=4)
+    m1 = BetSizePredictor(input_dim=82, hidden_dim=128, num_classes=4)
     m1.load_state_dict(torch.load(m1_path, map_location=torch.device("cpu")))
     m1.eval()
 

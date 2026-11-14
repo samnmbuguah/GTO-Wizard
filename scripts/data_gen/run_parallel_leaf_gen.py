@@ -32,7 +32,7 @@ def main():
     print(f"Spawning {len(PORTS)} native solver daemon workers on ports {PORTS}...")
 
     daemons = []
-    env_base = dict(os.environ, PATH="/usr/local/bin:/usr/bin:/bin")
+    env_base = dict(os.environ, PATH="/usr/local/bin:/usr/bin:/bin", GTO_LEAF_NET="off")
     for port in PORTS:
         env = dict(env_base, PORT=str(port))
         p = subprocess.Popen(
@@ -53,6 +53,7 @@ def main():
             "-u",
             str(GEN_SCRIPT),
             "--ports", ports_str,
+            "--multi-config",
             "--out", str(REPO_ROOT / "datasets" / "generated" / "nl500_100bb_real_cfr"),
         ]
         print(f"Executing: {' '.join(cmd)}")

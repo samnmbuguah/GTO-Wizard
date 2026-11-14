@@ -78,8 +78,11 @@ class EngineBridge:
 
         pot = float(raw_data.get("pot", 6.5))
         effective_stack = float(raw_data.get("effective_stack", 97.0))
+        ante_bb = float(raw_data.get("ante_bb", 0.0))
         rake_percent = float(raw_data.get("rake_percent", 5.0))
         rake_cap = float(raw_data.get("rake_cap", 3.0))
+        num_folded_players = int(raw_data.get("num_folded_players", 4))
+        use_bunching = bool(raw_data.get("use_bunching", True))
         max_bets_per_node = int(raw_data.get("max_bets_per_node", raw_data.get("max_sizes_per_node", 1)))
 
         return {
@@ -88,8 +91,11 @@ class EngineBridge:
             "ip_range": ip_range_norm,
             "pot": pot,
             "effective_stack": effective_stack,
+            "ante_bb": ante_bb,
             "rake_percent": rake_percent,
             "rake_cap": rake_cap,
+            "num_folded_players": num_folded_players,
+            "use_bunching": use_bunching,
             "max_bets_per_node": max_bets_per_node,
             "target_dEV": float(raw_data.get("target_dEV", 0.005)),
             "max_iterations": int(raw_data.get("max_iterations", 500)),

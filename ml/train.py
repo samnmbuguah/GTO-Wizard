@@ -24,6 +24,7 @@ from typing import Tuple, List, Dict, Any
 import numpy as np
 import pandas as pd
 import torch
+torch.set_num_threads(1)
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
@@ -72,17 +73,30 @@ class ZenoDataset(Dataset):
         ip_ranges = self.df["ip_range"].tolist() if "ip_range" in self.df.columns else [{}] * len(df)
         overall_freqs = self.df["overall_frequencies"].tolist() if "overall_frequencies" in self.df.columns else [{}] * len(df)
 
+        antes = self.df["ante_bb"].to_numpy(dtype=np.float32) if "ante_bb" in self.df.columns else np.zeros(len(df), dtype=np.float32)
+        foldeds = self.df["num_folded_players"].to_numpy(dtype=np.float32) if "num_folded_players" in self.df.columns else np.full(len(df), 4.0, dtype=np.float32)
+
         for i in range(len(df)):
             board = list(boards[i])
             pot = float(pots[i])
             stack = float(stacks[i])
             rake_pct = float(rake_pcts[i])
             rake_cap = float(rake_caps[i])
+            ante = float(antes[i])
+            folded = float(foldeds[i])
 
-            # Model 1 features
+            # Model 1 features (82 dims: 75 board + 7 generalized context)
             board_vec = encode_board(board)
             spr = stack / max(pot, 0.1)
-            ctx_m1 = np.array([pot / 10.0, stack / 100.0, spr / 20.0, rake_pct / 10.0], dtype=np.float32)
+            ctx_m1 = np.array([
+                stack / 100.0,
+                pot / 10.0,
+                spr / 20.0,
+                ante,
+                rake_pct / 10.0,
+                rake_cap / 5.0,
+                folded / 6.0,
+            ], dtype=np.float32)
             m1_x = np.concatenate([board_vec, ctx_m1])
             if real_sizing is not None:
                 m1_y = optimal_sizing_to_class(float(real_sizing[i]))
@@ -154,7 +168,7 @@ def train_model1_size_predictor(
     print(" 🎯 TRAINING MODEL 1: BET SIZE PREDICTOR (1-SIZE TREE PRUNING)")
     print("=" * 70)
 
-    model = BetSizePredictor(input_dim=79, hidden_dim=128, num_classes=4)
+    model = BetSizePredictor(input_dim=82, hidden_dim=128, num_classes=4)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     criterion = nn.CrossEntropyLoss()
 
@@ -325,6 +339,7 @@ def main():
     parser.add_argument("--epochs-m2", type=int, default=20, help="Epochs for Leaf Value Net")
     parser.add_argument("--batch-size", type=int, default=128, help="Batch size")
     parser.add_argument("--checkpoint-dir", type=str, default="ml/artifacts", help="Directory to save weights")
+    parser.add_argument("--m1-only", action="store_true", help="Only train Model 1 (use train_leaf_model.py for Model 2)")
     args = parser.parse_args()
 
     dataset_path = REPO_ROOT / args.dataset
@@ -370,7 +385,7 @@ def main():
 
     # Export Model 1 ONNX
     try:
-        dummy_m1 = torch.randn(1, 79, dtype=torch.float32)
+        dummy_m1 = torch.randn(1, 82, dtype=torch.float32)
         torch.onnx.export(
             model1,
             dummy_m1,
@@ -382,6 +397,10 @@ def main():
         print(f"📦 Model 1 ONNX exported to: {ckpt_dir / 'size_predictor.onnx'}")
     except Exception as e:
         print(f"⚠️ ONNX export for Model 1 skipped: {e}")
+
+    if args.m1_only:
+        print("\n✅ Model 1 training complete (--m1-only). Use ml/train_leaf_model.py for Model 2.")
+        return
 
     # 2. Train Model 2 (Leaf Value Net)
     model2 = train_model2_leaf_value_net(train_loader, val_loader, epochs=args.epochs_m2)

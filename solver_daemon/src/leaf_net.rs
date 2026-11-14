@@ -10,7 +10,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-const INPUT_DIM: usize = 418;
+const INPUT_DIM: usize = 422;
 const HIDDEN_DIM: usize = 256;
 const HEAD_DIM: usize = 128;
 const N_CLASSES: usize = 169;
@@ -157,6 +157,15 @@ impl LeafNet {
         };
 
         let in_w = get("input_proj.0.weight")?;
+        if in_w.len() != HIDDEN_DIM * INPUT_DIM {
+            return Err(format!(
+                "input_proj.0.weight size mismatch: got {} expected {} ({}x{})",
+                in_w.len(),
+                HIDDEN_DIM * INPUT_DIM,
+                HIDDEN_DIM,
+                INPUT_DIM
+            ));
+        }
         let in_b = get("input_proj.0.bias")?;
         let in_ln_w = get("input_proj.1.weight")?;
         let in_ln_b = get("input_proj.1.bias")?;
@@ -232,8 +241,11 @@ impl LeafNet {
         reach_i: &[f64],
         invested: [f64; 2],
         pot: f64,
+        effective_stack: f64,
+        ante_bb: f64,
         rake_pct: f64,
         rake_cap: f64,
+        num_folded_players: usize,
     ) -> (Vec<f64>, Vec<f64>) {
         let tot_pot = pot + invested[0] + invested[1];
         let rake = (tot_pot * (rake_pct / 100.0)).min(rake_cap);
@@ -268,7 +280,11 @@ impl LeafNet {
         x[base_ctx + 1] = (invested[0] / 10.0) as f32;
         x[base_ctx + 2] = (invested[1] / 10.0) as f32;
         x[base_ctx + 3] = (net_pot / 10.0) as f32;
-        x[base_ctx + 4] = (rake_pct / 10.0) as f32;
+        x[base_ctx + 4] = (effective_stack / 100.0) as f32;
+        x[base_ctx + 5] = ante_bb as f32;
+        x[base_ctx + 6] = (rake_pct / 10.0) as f32;
+        x[base_ctx + 7] = (rake_cap / 5.0) as f32;
+        x[base_ctx + 8] = (num_folded_players as f32) / 6.0;
 
         let (logit_o, logit_i) = self.forward(&x);
         let mut t_o = [0.0f64; N_CLASSES];
