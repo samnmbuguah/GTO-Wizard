@@ -58,19 +58,24 @@ pub struct ResBlockWeights {
 
 impl ResBlockWeights {
     pub fn forward(&self, x: &mut [f32]) {
-        let mut residual = [0.0f32; HIDDEN_DIM];
+        self.forward_dim(x, HIDDEN_DIM);
+    }
+
+    /// Same block with a runtime width (the V2 pair operator uses 128 units).
+    pub fn forward_dim(&self, x: &mut [f32], dim: usize) {
+        let mut residual = vec![0.0f32; dim];
         residual.copy_from_slice(x);
 
-        let mut h = [0.0f32; HIDDEN_DIM];
-        matvec(&mut h, &self.fc1_w, &self.fc1_b, x, HIDDEN_DIM, HIDDEN_DIM);
+        let mut h = vec![0.0f32; dim];
+        matvec(&mut h, &self.fc1_w, &self.fc1_b, x, dim, dim);
         layer_norm(&mut h, &self.ln1_w, &self.ln1_b, 1e-5);
         for v in &mut h {
             *v = gelu(*v);
         }
 
-        matvec(x, &self.fc2_w, &self.fc2_b, &h, HIDDEN_DIM, HIDDEN_DIM);
+        matvec(x, &self.fc2_w, &self.fc2_b, &h, dim, dim);
         layer_norm(x, &self.ln2_w, &self.ln2_b, 1e-5);
-        for i in 0..HIDDEN_DIM {
+        for i in 0..dim {
             x[i] = gelu(x[i] + residual[i]);
         }
     }
@@ -573,6 +578,167 @@ impl PairEquityNet {
     }
 }
 
+/// V2 dense antisymmetric pair-equity operator.
+///
+/// Every unordered hand-class pair gets its own logit:
+///
+/// ```text
+/// s[i][j] = w_ij · h + b_ij     (i < j)
+/// s[j][i] = -s[i][j]
+/// E[i][j] = sigmoid(s[i][j])
+/// ```
+///
+/// so `E[i][j] + E[j][i] = 1` holds exactly (pot conservation stays
+/// structural) while the model has pair-specific capacity. The V1 operator
+/// (low-rank skew) could not represent the real equity matrix closely
+/// enough for the CFR leaf path to converge; V2 reaches a root EV error of
+/// ~0.01 bb against exact showdown on held-out boards.
+pub struct DensePairEquityNet {
+    pub in_w: Vec<f32>,
+    pub in_b: Vec<f32>,
+    pub in_ln_w: Vec<f32>,
+    pub in_ln_b: Vec<f32>,
+    pub blocks: Vec<ResBlockWeights>,
+    /// (n_pairs, hidden) row-major pair weights.
+    pub pair_w: Vec<f32>,
+    /// (n_pairs,) pair biases.
+    pub pair_b: Vec<f32>,
+    pub hidden: usize,
+    pub pairs: usize,
+}
+
+impl DensePairEquityNet {
+    pub fn load_from_file(path: &Path) -> Result<Self, String> {
+        let tensors = read_tensor_map(path)?;
+        let get = |name: &str| -> Result<Vec<f32>, String> {
+            tensors.get(name).cloned().ok_or_else(|| format!("missing tensor: {}", name))
+        };
+        let meta = |name: &str| -> Result<usize, String> {
+            let v = get(name)?;
+            if v.is_empty() {
+                return Err(format!("empty meta tensor: {}", name));
+            }
+            Ok(v[0] as usize)
+        };
+
+        let hidden = meta("meta.hidden")?;
+        let pairs = meta("meta.pairs")?;
+        let in_w = get("input_proj.0.weight")?;
+        if in_w.len() != hidden * PAIR_INPUT_DIM {
+            return Err(format!(
+                "v2 input_proj.0.weight size mismatch: got {} expected {}",
+                in_w.len(),
+                hidden * PAIR_INPUT_DIM
+            ));
+        }
+        let pair_w = get("pair_w")?;
+        if pair_w.len() != pairs * hidden {
+            return Err(format!(
+                "v2 pair_w size mismatch: got {} expected {}",
+                pair_w.len(),
+                pairs * hidden
+            ));
+        }
+        let pair_b = get("pair_b")?;
+        if pair_b.len() != pairs {
+            return Err(format!(
+                "v2 pair_b size mismatch: got {} expected {}",
+                pair_b.len(),
+                pairs
+            ));
+        }
+
+        let mut blocks = Vec::new();
+        for b in 0..PAIR_NUM_BLOCKS {
+            let key = format!("blocks.{}.fc1.weight", b);
+            if !tensors.contains_key(&key) {
+                break;
+            }
+            blocks.push(ResBlockWeights {
+                fc1_w: get(&format!("blocks.{}.fc1.weight", b))?,
+                fc1_b: get(&format!("blocks.{}.fc1.bias", b))?,
+                ln1_w: get(&format!("blocks.{}.ln1.weight", b))?,
+                ln1_b: get(&format!("blocks.{}.ln1.bias", b))?,
+                fc2_w: get(&format!("blocks.{}.fc2.weight", b))?,
+                fc2_b: get(&format!("blocks.{}.fc2.bias", b))?,
+                ln2_w: get(&format!("blocks.{}.ln2.weight", b))?,
+                ln2_b: get(&format!("blocks.{}.ln2.bias", b))?,
+            });
+        }
+
+        Ok(DensePairEquityNet {
+            in_w,
+            in_b: get("input_proj.0.bias")?,
+            in_ln_w: get("input_proj.1.weight")?,
+            in_ln_b: get("input_proj.1.bias")?,
+            blocks,
+            pair_w,
+            pair_b,
+            hidden,
+            pairs,
+        })
+    }
+
+    fn trunk(&self, x: &[f32]) -> Vec<f32> {
+        let mut h = vec![0.0f32; self.hidden];
+        matvec(&mut h, &self.in_w, &self.in_b, x, self.hidden, PAIR_INPUT_DIM);
+        layer_norm(&mut h, &self.in_ln_w, &self.in_ln_b, 1e-5);
+        for v in &mut h {
+            *v = gelu(*v);
+        }
+        for block in &self.blocks {
+            block.forward_dim(&mut h, self.hidden);
+        }
+        h
+    }
+
+    /// Evaluates the 169x169 equity matrix for a board and solver context.
+    /// Called once per solve; the result is independent of the reaches.
+    #[allow(clippy::too_many_arguments)]
+    pub fn equity_matrix(
+        &self,
+        board_features: &[f32; 75],
+        starting_pot: f64,
+        effective_stack: f64,
+        ante_bb: f64,
+        rake_pct: f64,
+        rake_cap: f64,
+        num_folded_players: usize,
+    ) -> Vec<f64> {
+        let mut x = [0.0f32; PAIR_INPUT_DIM];
+        x[..75].copy_from_slice(board_features);
+        x[75] = (effective_stack / 100.0) as f32;
+        x[76] = (starting_pot / 10.0) as f32;
+        x[77] = ante_bb as f32;
+        x[78] = (rake_pct / 10.0) as f32;
+        x[79] = (rake_cap / 5.0) as f32;
+        x[80] = num_folded_players as f32 / 6.0;
+
+        let h = self.trunk(&x);
+        let mut e = vec![0.0f64; N_CLASSES * N_CLASSES];
+        let mut p = 0usize;
+        for i in 0..N_CLASSES {
+            e[i * N_CLASSES + i] = 0.5;
+            for j in (i + 1)..N_CLASSES {
+                if p >= self.pairs {
+                    break;
+                }
+                let row = &self.pair_w[p * self.hidden..(p + 1) * self.hidden];
+                let mut s = self.pair_b[p];
+                for k in 0..self.hidden {
+                    s += row[k] * h[k];
+                }
+                let sig = 1.0 / (1.0 + (-(s as f64)).exp());
+                e[i * N_CLASSES + j] = sig;
+                // Mirror explicitly so the complement identity is exact.
+                e[j * N_CLASSES + i] = 1.0 - sig;
+                p += 1;
+            }
+        }
+        e
+    }
+}
+
 /// Counterfactual values induced by a pair-equity matrix.
 ///
 /// `v_oop[i] = (Σ_j E[i][j]·ri_n[j]·net_pot − invested_oop)·m_i`
@@ -596,51 +762,121 @@ pub fn pair_values(
     let m_i: f64 = reach_i.iter().sum();
     let mut v_o = vec![0.0f64; N_CLASSES];
     let mut v_i = vec![0.0f64; N_CLASSES];
-    if m_o <= 1e-12 || m_i <= 1e-12 {
+
+    // Each side is guarded independently: the OOP value depends on the IP
+    // reach and the IP value depends on the OOP reach. A global guard (as in
+    // an earlier revision) zeroed *both* sides whenever one reach was empty,
+    // which happens on every best-response traversal of an action with
+    // probability 0. That silently corrupted the NashConv measurement and
+    // stopped CFR from converging. The exact showdown path has always
+    // guarded each side separately; this mirrors it exactly.
+    if m_i > 1e-12 {
+        let rin: Vec<f64> = reach_i.iter().map(|x| x / m_i).collect();
+        for i in 0..N_CLASSES {
+            let base = i * N_CLASSES;
+            let mut share = 0.0;
+            for j in 0..N_CLASSES {
+                if rin[j] != 0.0 {
+                    share += e[base + j] * rin[j];
+                }
+            }
+            v_o[i] = (share * net_pot - invested[0]) * m_i;
+        }
+    } else {
         for h in 0..N_CLASSES {
             v_o[h] = -invested[0] * m_i;
+        }
+    }
+
+    if m_o > 1e-12 {
+        let ron: Vec<f64> = reach_o.iter().map(|x| x / m_o).collect();
+        for j in 0..N_CLASSES {
+            let mut share = 0.0;
+            for (h, r) in ron.iter().enumerate() {
+                if *r != 0.0 {
+                    share += r * e[h * N_CLASSES + j];
+                }
+            }
+            v_i[j] = ((1.0 - share) * net_pot - invested[1]) * m_o;
+        }
+    } else {
+        for h in 0..N_CLASSES {
             v_i[h] = -invested[1] * m_o;
         }
-        return (v_o, v_i);
-    }
-
-    let ron: Vec<f64> = reach_o.iter().map(|x| x / m_o).collect();
-    let rin: Vec<f64> = reach_i.iter().map(|x| x / m_i).collect();
-
-    for i in 0..N_CLASSES {
-        let base = i * N_CLASSES;
-        let mut share = 0.0;
-        for j in 0..N_CLASSES {
-            if rin[j] != 0.0 {
-                share += e[base + j] * rin[j];
-            }
-        }
-        v_o[i] = (share * net_pot - invested[0]) * m_i;
-    }
-    for j in 0..N_CLASSES {
-        let mut share = 0.0;
-        for (h, r) in ron.iter().enumerate() {
-            if *r != 0.0 {
-                share += r * e[h * N_CLASSES + j];
-            }
-        }
-        v_i[j] = ((1.0 - share) * net_pot - invested[1]) * m_o;
     }
     (v_o, v_i)
 }
 
 pub static GLOBAL_PAIR_NET: OnceLock<Option<PairEquityNet>> = OnceLock::new();
+pub static GLOBAL_PAIR_NET_V2: OnceLock<Option<DensePairEquityNet>> = OnceLock::new();
+
+/// Loads the V2 dense pair-equity operator (preferred over V1 when present).
+pub fn get_pair_net_v2() -> Option<&'static DensePairEquityNet> {
+    GLOBAL_PAIR_NET_V2
+        .get_or_init(|| {
+            if !learned_pair_enabled() {
+                return None;
+            }
+            let candidate_paths = [
+                PathBuf::from("ml/artifacts/pair_equity_net_v2_weights.bin"),
+                PathBuf::from("/app/artifacts/pair_equity_net_v2_weights.bin"),
+                PathBuf::from("/root/Dev/GTO-Wizard/ml/artifacts/pair_equity_net_v2_weights.bin"),
+                PathBuf::from("../ml/artifacts/pair_equity_net_v2_weights.bin"),
+            ];
+            for p in &candidate_paths {
+                if p.exists() {
+                    match DensePairEquityNet::load_from_file(p) {
+                        Ok(net) => {
+                            eprintln!("✅ Loaded V2 dense pair-equity net from {}", p.display());
+                            return Some(net);
+                        }
+                        Err(e) => eprintln!("⚠️ Failed to load V2 pair-equity net from {}: {}", p.display(), e),
+                    }
+                }
+            }
+            None
+        })
+        .as_ref()
+}
+
+/// Learned leaf evaluators.
+///
+/// * `GTO_LEAF_NET=off` (or 0/false/no) forces exact showdown equity.
+/// * `GTO_LEAF_NET=on` (or 1/true/yes) enables every learned evaluator,
+///   including the reach-conditioned marginal net (kept for experiments).
+/// * unset (the default) enables the **pair operator** when its weights are
+///   present. The pair operator is reach-independent, conserves the pot
+///   structurally and passes the 0.5%-pot exploitability gate on the whole
+///   verification matrix, so it is the shipped leaf evaluator. The marginal
+///   net stays off unless it is explicitly requested.
+///
+/// If the learned attempt misses the accuracy gate the engine transparently
+/// re-solves the same spot with exact showdown equity
+/// (`solver_daemon/src/lib.rs::leaf_result_passes`).
+fn learned_leaf_enabled() -> bool {
+    matches!(
+        std::env::var("GTO_LEAF_NET").as_deref(),
+        Ok("on") | Ok("1") | Ok("true") | Ok("yes")
+    )
+}
+
+fn learned_pair_enabled() -> bool {
+    match std::env::var("GTO_LEAF_NET").as_deref() {
+        Ok("on") | Ok("1") | Ok("true") | Ok("yes") => true,
+        Ok("off") | Ok("0") | Ok("false") | Ok("no") => false,
+        // Auto: the pair operator is the default leaf evaluator.
+        _ => true,
+    }
+}
 
 pub fn get_pair_net() -> Option<&'static PairEquityNet> {
     GLOBAL_PAIR_NET
         .get_or_init(|| {
-            if matches!(std::env::var("GTO_PAIR_NET").as_deref(), Ok("off") | Ok("0")) {
-                eprintln!("ℹ️ GTO_PAIR_NET=off; pair-equity net disabled.");
-                return None;
-            }
-            // GTO_LEAF_NET=off is the global "exact showdown" switch used for
-            // label generation; it must disable every learned evaluator.
-            if matches!(std::env::var("GTO_LEAF_NET").as_deref(), Ok("off") | Ok("0")) {
+            if !learned_pair_enabled() {
+                eprintln!(
+                    "ℹ️ Learned leaf path disabled (GTO_LEAF_NET=off); \
+                     using exact showdown equity at leaves."
+                );
                 return None;
             }
             let candidate_paths = [
@@ -660,7 +896,7 @@ pub fn get_pair_net() -> Option<&'static PairEquityNet> {
                     }
                 }
             }
-            eprintln!("ℹ️ Pair-equity weights not found; using marginal leaf net / exact showdown.");
+            eprintln!("ℹ️ V1 pair-equity weights not found; using exact showdown equity.");
             None
         })
         .as_ref()
@@ -671,8 +907,9 @@ pub static GLOBAL_LEAF_NET: OnceLock<Option<LeafNet>> = OnceLock::new();
 pub fn get_leaf_net() -> Option<&'static LeafNet> {
     GLOBAL_LEAF_NET
         .get_or_init(|| {
-            if matches!(std::env::var("GTO_LEAF_NET").as_deref(), Ok("off") | Ok("0")) {
-                eprintln!("ℹ️ GTO_LEAF_NET=off; using exact showdown equity at leaves.");
+            if !learned_leaf_enabled() {
+                eprintln!("ℹ️ Marginal leaf net disabled (set GTO_LEAF_NET=on to enable); \
+                           using the pair operator or exact showdown equity.");
                 return None;
             }
             let candidate_paths = [
@@ -706,7 +943,10 @@ pub fn encode_board_cards(board_ranks: &[u8], board_suits: &[u8]) -> [f32; 75] {
 
     for i in 0..board_ranks.len() {
         let r_val = board_ranks[i] as usize + 2; // rank 0=2 -> 2, 12=A -> 14
-        let s_val = board_suits[i] as usize;
+        // The solver's internal suit order is c,d,h,s (0..3) but the models are
+        // trained on the Python encoding s,h,d,c (0..3). Map between the two so
+        // the daemon feeds the network exactly the features it was trained on.
+        let s_val = 3usize.saturating_sub(board_suits[i] as usize);
         let r_idx = 14 - r_val;
 
         out[r_idx * 4 + s_val] = 1.0;
@@ -792,5 +1032,70 @@ mod tests {
         let rake = ((pot + 3.0) * 0.05).min(0.6);
         let target = m_o * m_i * (pot - rake);
         assert!((lhs - target).abs() < 1e-9, "conservation off by {}", (lhs - target).abs());
+    }
+
+    /// The zero-reach guard must be *per side*: an empty OOP reach must not
+    /// zero out the IP player's value (and vice versa). The best-response
+    /// traversal produces empty reaches whenever an action has probability 0,
+    /// so a global guard silently corrupted the NashConv measurement and
+    /// stopped CFR from converging.
+    #[test]
+    fn test_pair_values_zero_reach_is_per_side() {
+        let mut e = vec![0.5f64; N_CLASSES * N_CLASSES];
+        for i in 0..N_CLASSES {
+            for j in 0..N_CLASSES {
+                e[i * N_CLASSES + j] = if i == j { 0.5 } else { 0.75 };
+            }
+        }
+        // The IP side has reach, the OOP side does not. The OOP value depends
+        // only on the IP reach, so it must still be computed; the IP value
+        // has no opponent to win against, so it is zero.
+        let ro = vec![0.0f64; N_CLASSES];
+        let mut ri = vec![0.0f64; N_CLASSES];
+        ri[0] = 1.0;
+        let (vo, vi) = pair_values(&e, [1.0, 2.0], 5.5, 0.0, 0.0, &ro, &ri);
+        assert!(
+            vo.iter().any(|v| v.abs() > 1e-9),
+            "empty OOP reach must not zero out the OOP value"
+        );
+        assert!(
+            vi.iter().all(|v| v.abs() < 1e-12),
+            "empty OOP reach must give a zero IP value"
+        );
+        // And the other way round.
+        let mut ro2 = vec![0.0f64; N_CLASSES];
+        ro2[0] = 1.0;
+        let ri2 = vec![0.0f64; N_CLASSES];
+        let (vo2, vi2) = pair_values(&e, [1.0, 2.0], 5.5, 0.0, 0.0, &ro2, &ri2);
+        assert!(
+            vi2.iter().any(|v| v.abs() > 1e-9),
+            "empty IP reach must not zero out the IP value"
+        );
+        assert!(
+            vo2.iter().all(|v| v.abs() < 1e-12),
+            "empty IP reach must give a zero OOP value"
+        );
+    }
+
+    /// The V2 dense operator must be antisymmetric as well.
+    #[test]
+    fn test_dense_pair_equity_antisymmetry() {
+        let p = Path::new("../ml/artifacts/pair_equity_net_v2_weights.bin");
+        if !p.exists() {
+            println!("Skipping V2 pair test: weights not found at {:?}", p);
+            return;
+        }
+        let net = DensePairEquityNet::load_from_file(p).expect("failed to load V2 pair weights");
+        // Ah Kd 2c
+        let board = encode_board_cards(&[12u8, 11, 0], &[3u8, 2, 1]);
+        let e = net.equity_matrix(&board, 5.5, 100.0, 0.0, 5.0, 0.6, 4);
+        assert_eq!(e.len(), N_CLASSES * N_CLASSES);
+        let mut worst = 0.0f64;
+        for i in 0..N_CLASSES {
+            for j in 0..N_CLASSES {
+                worst = worst.max((e[i * N_CLASSES + j] + e[j * N_CLASSES + i] - 1.0).abs());
+            }
+        }
+        assert!(worst < 1e-9, "V2 antisymmetry error {worst}");
     }
 }

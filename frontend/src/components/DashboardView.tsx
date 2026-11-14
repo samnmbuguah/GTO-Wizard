@@ -26,6 +26,23 @@ interface TabConfig {
   categories: TabCategory[];
 }
 
+/**
+ * 6-max seat order (UTG first). Preflop card bunching depends on which seats
+ * folded: in a 6-max cash game every seat except the two players in the hand
+ * folded, which is where the "4 folded players" default comes from. The
+ * backend derives a seat-aware dead-card profile from these seats.
+ */
+const SIX_MAX_SEATS = ['UTG', 'MP', 'CO', 'BTN', 'SB', 'BB'];
+
+export const foldedSeatsFor = (position: string, headsUp = false): string[] => {
+  if (headsUp) return [];
+  const parts = position.split(' vs ').map((s) => s.trim());
+  if (parts.length !== 2) return [];
+  const [oop, ip] = parts;
+  if (!SIX_MAX_SEATS.includes(oop) || !SIX_MAX_SEATS.includes(ip)) return [];
+  return SIX_MAX_SEATS.filter((seat) => seat !== oop && seat !== ip);
+};
+
 const TAB_CONFIG: Record<string, Record<string, TabConfig>> = {
   '100': {
     'SRP': {
@@ -193,6 +210,7 @@ const DashboardView: React.FC = () => {
         rake_cap: customCap,
         num_folded_players: useBunching ? 4 : 0,
         use_bunching: useBunching,
+        folded_positions: useBunching ? foldedSeatsFor(activePosition, activeTab === 'HU') : [],
         open_size: openSize
       };
       const res = await apiClient.post<any>('/solutions/live-solve/', payload);

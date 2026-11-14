@@ -1415,28 +1415,23 @@ impl<'a> Solver<'a> {
                     return v;
                 }
 
-                let r_opp: f64 = reach_opp.iter().sum();
-                let total = self.pot
-                    + self.tree.nodes[idx].invested[0]
-                    + self.tree.nodes[idx].invested[1];
-                let pot_net = total - self.rake_for(self.tree.nodes[idx].invested);
-                let mut v = vec![0.0; N_CLASSES];
-                for h in 0..N_CLASSES {
-                    let mut share = 0.0;
-                    for j in 0..N_CLASSES {
-                        if reach_opp[j] == 0.0 {
-                            continue;
-                        }
-                        let eq = if br_player == 0 {
-                            self.eq[h * N_CLASSES + j] as f64
-                        } else {
-                            1.0 - self.eq[j * N_CLASSES + h] as f64
-                        };
-                        share += reach_opp[j] * eq;
-                    }
-                    v[h] = share * pot_net - self.tree.nodes[idx].invested[br_player] * r_opp;
+                // Use the *same* leaf evaluator as `eval_profile` so the
+                // NashConv measures the exploitability of this game. Using the
+                // exact sampled equity here while the average-strategy values
+                // came from the learned pair operator compared two different
+                // games and produced a constant ~1.8% pot floor that no number
+                // of CFR iterations could remove.
+                let node_invested = self.tree.nodes[idx].invested;
+                let (v_o, v_i) = if br_player == 0 {
+                    self.showdown_values(idx, node_invested, reach_self, reach_opp)
+                } else {
+                    self.showdown_values(idx, node_invested, reach_opp, reach_self)
+                };
+                if br_player == 0 {
+                    v_o
+                } else {
+                    v_i
                 }
-                v
             }
             NodeKind::Decision {
                 player,
@@ -1563,12 +1558,17 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
     let oop_dist = normalized_reach(&oop_weights, &classes, &board, &bunching_weights);
     let ip_dist = normalized_reach(&ip_weights, &classes, &board, &bunching_weights);
 
-    let pair_net = if input.force_exact {
+    let pair_net_v2 = if input.force_exact {
+        None
+    } else {
+        crate::leaf_net::get_pair_net_v2()
+    };
+    let pair_net = if input.force_exact || pair_net_v2.is_some() {
         None
     } else {
         crate::leaf_net::get_pair_net()
     };
-    let leaf_net = if input.force_exact || pair_net.is_some() {
+    let leaf_net = if input.force_exact || pair_net.is_some() || pair_net_v2.is_some() {
         None
     } else {
         crate::leaf_net::get_leaf_net()
@@ -1577,8 +1577,8 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
     let board_suits: Vec<u8> = board.iter().map(|c| c.suit).collect();
     let board_features = crate::leaf_net::encode_board_cards(&board_ranks, &board_suits);
     // One forward pass per solve: E depends only on the board and folded count.
-    let equity_pair = pair_net.map(|n| {
-        n.equity_matrix(
+    let equity_pair = match (pair_net_v2, pair_net) {
+        (Some(n), _) => Some(n.equity_matrix(
             &board_features,
             input.pot,
             input.effective_stack,
@@ -1586,9 +1586,19 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
             input.rake_percent,
             input.rake_cap,
             effective_folded,
-        )
-    });
-    let has_learned_leaves = pair_net.is_some() || leaf_net.is_some();
+        )),
+        (None, Some(n)) => Some(n.equity_matrix(
+            &board_features,
+            input.pot,
+            input.effective_stack,
+            input.ante_bb,
+            input.rake_percent,
+            input.rake_cap,
+            effective_folded,
+        )),
+        _ => None,
+    };
+    let has_learned_leaves = pair_net.is_some() || pair_net_v2.is_some() || leaf_net.is_some();
 
     let (eq, runouts) = {
         let equity_samples = if board.len() >= 5 {
@@ -1596,11 +1606,23 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
         } else if board.len() == 4 {
             0 // enumerate all rivers
         } else {
-            400
+            input.equity_samples_override.unwrap_or(400).clamp(50, 20000)
         };
         compute_equity(&classes, &board, equity_samples, &bunching_weights)
     };
 
+    // Diagnostic: route the *exact* sampled equity through the pair code path.
+    // Used to tell "the learned matrix is wrong" apart from "the pair code
+    // path is wrong" when a learned-leaf solve fails to converge.
+    let equity_pair = if equity_pair.is_some()
+        && matches!(
+            std::env::var("GTO_PAIR_USE_EXACT").as_deref(),
+            Ok("on") | Ok("1") | Ok("true") | Ok("yes")
+        ) {
+        Some(eq.iter().map(|v| *v as f64).collect())
+    } else {
+        equity_pair
+    };
     let mut bet_sizes: Vec<f64> = match input.bet_fraction {
         Some(f) if f.is_finite() && f > 0.0 => vec![f.clamp(0.05, 5.0)],
         _ => {
@@ -1658,9 +1680,17 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
     let time_limit_ms = input.time_limit_ms.max(1) as u128;
     // A learned-leaf attempt can be discarded and retried with exact equity.
     // Cap the learned attempt so the worst-case roundtrip (attempt + retry)
-    // still fits the sub-second contract.
-    let attempt_deadline = if has_learned_leaves {
-        time_limit_ms.min(600)
+    // still fits the sub-second contract. GTO_LEAF_ATTEMPT_MS overrides the
+    // cap for offline experiments.
+    let attempt_budget_ms: u128 = std::env::var("GTO_LEAF_ATTEMPT_MS")
+        .ok()
+        .and_then(|v| v.parse::<u128>().ok())
+        .unwrap_or(600);
+    let attempt_deadline = if input.deterministic {
+        // Audit mode: no wall-clock cut-off, so the result is reproducible.
+        u128::MAX
+    } else if has_learned_leaves {
+        time_limit_ms.min(attempt_budget_ms)
     } else {
         time_limit_ms
     };
@@ -1784,13 +1814,21 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
     let converged = solver.converged;
     let exploit_bb = solver.exploit_bb;
     let exploit_pct = solver.exploit_pct;
-    let leaf_mode = if solver.equity_pair.is_some() {
+    let leaf_mode = if pair_net_v2.is_some() {
+        "leaf-net-pair-v2".to_string()
+    } else if solver.equity_pair.is_some() {
         "leaf-net-pair".to_string()
     } else if solver.leaf_net.is_some() && solver.leaf_shares.iter().any(|s| s.is_some()) {
         "leaf-net".to_string()
     } else {
         "exact-showdown".to_string()
     };
+    // Keep the learned pair matrix around for the Python<->Rust parity check.
+    let solver_pair_matrix: Vec<f32> = solver
+        .equity_pair
+        .as_ref()
+        .map(|m| m.iter().map(|v| *v as f32).collect())
+        .unwrap_or_default();
     drop(solver);
     let tree_nodes = tree.nodes.len();
 
@@ -1920,6 +1958,7 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
         exploitability: exploit_pct,
         solve_time_ms: start.elapsed().as_millis().max(1),
         iterations,
+        leaf_attempt: None,
         strategy,
         overall_frequencies: overall,
         optimal_sizing,
@@ -1948,6 +1987,11 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
         leaf_mode,
         equity_matrix: if input.collect_equity {
             eq.clone()
+        } else {
+            Vec::new()
+        },
+        pair_equity_matrix: if input.collect_equity {
+            solver_pair_matrix
         } else {
             Vec::new()
         },

@@ -102,6 +102,7 @@ async def solve_config(
             max_bets_per_node=1,
             target_dEV=0.005,
             max_iterations=500,
+            deterministic=True,
         )
         ev_o = float(res.get("oop_ev", 0.0))
         ev_i = float(res.get("ip_ev", 0.0))

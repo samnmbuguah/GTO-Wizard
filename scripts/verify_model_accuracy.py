@@ -44,6 +44,7 @@ from ml.features import (
 from ml.models.size_predictor import BetSizePredictor
 from ml.models.leaf_value_net import LeafValueNet
 from ml.models.pair_equity_net import PairEquityNet
+from ml.models.pair_equity_net_v2 import DensePairEquityNet
 from backend.solutions.services.range_service import PreflopRangeService
 from backend.solutions.services.engine_bridge import EngineBridge
 
@@ -104,14 +105,42 @@ def load_trained_models(artifact_dir: Path) -> Tuple[BetSizePredictor, LeafValue
 
     # The solver prefers the antisymmetric pair-equity operator when its weights
     # are present; load them so section 2 measures the model the engine uses.
+    # V2 (dense per-pair head) is the shipped operator; V1 is the legacy
+    # low-rank fallback.
     pair = None
-    pair_path = artifact_dir / "pair_equity_net.pt"
-    if pair_path.exists():
-        pair = PairEquityNet()
-        pair.load_state_dict(torch.load(pair_path, map_location=torch.device("cpu")))
+    pair_name = ""
+    v2_path = artifact_dir / "pair_equity_net_v2.pt"
+    v1_path = artifact_dir / "pair_equity_net.pt"
+    if v2_path.exists():
+        pair = DensePairEquityNet(hidden_dim=128, num_res_blocks=2)
+        pair.load_state_dict(torch.load(v2_path, map_location=torch.device("cpu")))
         pair.eval()
+        pair_name = "DensePairEquityNet V2 (169x169 dense antisymmetric operator)"
+    elif v1_path.exists():
+        pair = _load_v1_pair(v1_path)
+        pair.eval()
+        pair_name = "PairEquityNet V1 (169x169 low-rank antisymmetric operator)"
 
-    return m1, m2, pair
+    return m1, m2, pair, pair_name
+
+
+def _load_v1_pair(path: Path) -> PairEquityNet:
+    """Loads a V1 pair checkpoint, inferring the low-rank factor count.
+
+    The rank is encoded in the head shape (``169 + 2*169*rank``), so a
+    checkpoint trained with a different rank still loads.
+    """
+    state = torch.load(path, map_location=torch.device("cpu"))
+    rank = 8
+    for key, tensor in state.items():
+        if key.endswith("head.3.weight"):
+            out_dim = int(tensor.shape[0])
+            if (out_dim - 169) % (2 * 169) == 0:
+                rank = (out_dim - 169) // (2 * 169)
+            break
+    model = PairEquityNet(rank=rank)
+    model.load_state_dict(state)
+    return model
 
 
 def run_exploitability_audit(
@@ -270,6 +299,7 @@ def run_ground_truth_comparison(
     bridge: EngineBridge,
     boards: List[List[str]],
     pair_model: Any = None,
+    pair_name: str = "",
 ) -> Dict[str, Any]:
     """
     Compares the engine's leaf evaluator against exact showdown values at the
@@ -285,9 +315,10 @@ def run_ground_truth_comparison(
     import pandas as pd
 
     leaf_model = pair_model if pair_model is not None else m2
-    model_name = "PairEquityNet (169x169 antisymmetric operator)" if pair_model is not None \
-        else "LeafValueNet (marginal shares)"
-
+    model_name = pair_name or (
+        "PairEquityNet (169x169 antisymmetric operator)"
+        if pair_model is not None else "LeafValueNet (marginal shares)"
+    )
     print("\n" + "=" * 100)
     print(" 2. LEAF MODEL vs EXACT SHOWDOWN VALUES AT LEAF NODES - DIAGNOSTIC")
     print(f"    model: {model_name}")
@@ -494,9 +525,9 @@ def main():
     print(f"Artifacts Directory : {artifact_dir}")
     print(f"Exploitability Limit: < {args.threshold_pct:.2f}% pot (real NashConv/2)")
 
-    m1, m2, pair = load_trained_models(artifact_dir)
+    m1, m2, pair, pair_name = load_trained_models(artifact_dir)
     print("Loaded Model 1 (BetSizePredictor) and Model 2 (LeafValueNet).")
-    print("Pair-equity operator :", "loaded" if pair is not None else "not found (using marginal shares)")
+    print("Pair-equity operator :", pair_name or "not found (using marginal shares)")
 
     bridge = EngineBridge(host=os.environ.get("SOLVER_DAEMON_HOST", "127.0.0.1"),
                           port=int(os.environ.get("SOLVER_DAEMON_PORT", "9998")),
@@ -508,7 +539,9 @@ def main():
     )
 
     # 2. Leaf model vs real CFR (diagnostic)
-    gt_res = run_ground_truth_comparison(m1, m2, bridge, CANONICAL_50_BOARDS, pair_model=pair)
+    gt_res = run_ground_truth_comparison(
+        m1, m2, bridge, CANONICAL_50_BOARDS, pair_model=pair, pair_name=pair_name
+    )
 
     # 3. Our own reference table
     run_reference_spot_table(m1, m2, bridge)

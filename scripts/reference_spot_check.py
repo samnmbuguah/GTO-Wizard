@@ -43,6 +43,10 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 METRICS = ("oop_ev", "ip_ev", "cbet_pct", "oop_check_pct", "bet_size_pct")
 
 
@@ -90,18 +94,30 @@ def post_socket(port: int, payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def build_payload(row: Dict[str, str]) -> Dict[str, Any]:
     board = row["board"].split()
+    rake_percent = num(row, "rake_percent") if num(row, "rake_percent") is not None else 5.0
+    rake_cap = num(row, "rake_cap") if num(row, "rake_cap") is not None else 0.6
+    # Same preflop ranges the parity harness and the live API use.
+    from backend.solutions.services.range_service import PreflopRangeService
+    oop_range, ip_range = PreflopRangeService.get_spot_ranges(
+        "BTN_vs_BB_SRP", rake_percent, rake_cap
+    )
     payload: Dict[str, Any] = {
         "board": board,
+        "oop_range": oop_range,
+        "ip_range": ip_range,
         "pot": num(row, "pot") if num(row, "pot") is not None else 5.5,
         "effective_stack": num(row, "effective_stack") or 100.0,
-        "rake_percent": num(row, "rake_percent") if num(row, "rake_percent") is not None else 5.0,
-        "rake_cap": num(row, "rake_cap") if num(row, "rake_cap") is not None else 0.6,
+        "rake_percent": rake_percent,
+        "rake_cap": rake_cap,
         "ante_bb": num(row, "ante_bb") or 0.0,
         "num_folded_players": int(num(row, "num_folded_players") or 4),
         "use_bunching": as_bool(row.get("use_bunching"), True),
         "max_bets_per_node": 1,
         "target_dEV": 0.005,
         "max_iterations": 500,
+        # Reproducible solve (no wall-clock cut-off) so a re-solve matches the
+        # values recorded in the CSV.
+        "deterministic": True,
     }
     return payload
 
@@ -133,7 +149,7 @@ def main() -> int:
     parser.add_argument("csv_path", type=Path)
     parser.add_argument("--base-url", default="", help="HTTP API base URL (Django)")
     parser.add_argument("--port", type=int, default=0, help="Rust daemon port (direct)")
-    parser.add_argument("--source", choices=("auto", "zeno", "oracle"), default="auto")
+    parser.add_argument("--source", choices=("auto", "zeno", "oracle", "our"), default="auto")
     parser.add_argument("--report", default="", help="optional markdown report path")
     parser.add_argument("--max-ev-mae", type=float, default=None,
                         help="fail if the worst per-metric EV MAE exceeds this (bb)")
@@ -155,9 +171,12 @@ def main() -> int:
     if source == "auto":
         has_zeno = any((r.get("ref_oop_ev") or "").strip() for r in rows)
         source = "zeno" if has_zeno else "oracle"
-    prefix = "ref" if source == "zeno" else "oracle"
-    source_label = ("ZenoSolver (human capture)" if source == "zeno"
-                    else "exact-CFR oracle (GTO_LEAF_NET=off; not Zeno)")
+    prefix = {"zeno": "ref", "oracle": "oracle", "our": "our"}[source]
+    source_label = {
+        "zeno": "ZenoSolver (human capture)",
+        "oracle": "exact-CFR oracle (GTO_LEAF_NET=off; not Zeno)",
+        "our": "our own recorded values (re-solve reproducibility check)",
+    }[source]
 
     print("=" * 100)
     print(" REFERENCE SPOT CHECK")
@@ -250,6 +269,9 @@ def main() -> int:
             print("\nNote: this comparison is against our own exact-CFR oracle, NOT against")
             print("      ZenoSolver. Capture Zeno values into the ref_* columns (see")
             print("      docs/zeno_capture_sheet.md) for the real side-by-side check.")
+        elif source == "our":
+            print("\nNote: this is a reproducibility check — the recorded `our_*` columns")
+            print("      must match a fresh deterministic re-solve exactly (MAE 0.0000).")
     else:
         print("No reference values matched. Fill the ref_* (Zeno) or oracle_* columns.")
         worst_ev = None

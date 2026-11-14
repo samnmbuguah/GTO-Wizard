@@ -22,8 +22,14 @@ services:
       context: ./solver_daemon
       dockerfile: Dockerfile
     volumes:
-      - ./solver_daemon/target/release/solver_daemon:/app/solver_daemon:ro
+      # Mount the whole release *directory* rather than the single binary file:
+      # `cargo build` replaces the binary (new inode), and a single-file bind
+      # mount stays pinned to the old inode, so the container would silently
+      # keep running a stale solver. With a directory mount the container
+      # always sees the current binary after a restart.
+      - ./solver_daemon/target/release:/app/release:ro
       - ./ml/artifacts:/app/artifacts:ro
+    command: ["/app/release/solver_daemon"]
     ports:
       - "9998:9998"
     restart: unless-stopped

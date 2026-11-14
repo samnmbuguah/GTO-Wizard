@@ -267,6 +267,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         use_bunching: true,
                         bunching_weights: Vec::new(),
                         collect_equity: false,
+                        equity_samples_override: None,
+                        deterministic: false,
                         force_exact: false,
                     };
 
@@ -332,6 +334,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     use_bunching: true,
                     bunching_weights: Vec::new(),
                     collect_equity: false,
+                    equity_samples_override: None,
+                    deterministic: false,
                     force_exact: false,
                 };
 

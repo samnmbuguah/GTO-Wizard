@@ -117,7 +117,18 @@ class EngineBridge:
             "max_bets_per_node": max_bets_per_node,
             "target_dEV": float(raw_data.get("target_dEV", 0.005)),
             "max_iterations": int(raw_data.get("max_iterations", 500)),
+            # Audit / dataset-generation knobs. They are optional and are only
+            # forwarded when the caller sets them, so the live API keeps the
+            # daemon's interactive defaults.
+            "time_limit_ms": int(raw_data.get("time_limit_ms", 1500)),
+            "deterministic": bool(raw_data.get("deterministic", False)),
+            "collect_equity": bool(raw_data.get("collect_equity", False)),
+            "collect_leaves": bool(raw_data.get("collect_leaves", False)),
+            "force_exact": bool(raw_data.get("force_exact", False)),
         }
+        if raw_data.get("equity_samples_override") is not None:
+            norm["equity_samples_override"] = int(raw_data["equity_samples_override"])
+        return norm
 
     async def solve(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -283,6 +294,9 @@ class EngineBridge:
             # "exact-showdown", "leaf-net", or the explicit
             # "exact-showdown (leaf-net fallback)" safety retry.
             "leaf_mode": str(res.get("leaf_mode", "unknown")),
+            # Diagnostics from a discarded learned-leaf attempt (only present
+            # when the engine fell back to exact showdown).
+            "leaf_attempt": res.get("leaf_attempt"),
         }
 
     async def _run_local_dls_solve(self, payload: Dict[str, Any], start_time: float) -> Dict[str, Any]:

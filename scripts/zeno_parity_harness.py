@@ -140,6 +140,9 @@ def solve_spot(port: int, board: List[str], cfg: Dict[str, Any],
         "max_bets_per_node": 1,
         "target_dEV": 0.005,
         "max_iterations": 500,
+        # Reproducible solve: no wall-clock cut-off, so the recorded values can
+        # be re-verified exactly.
+        "deterministic": True,
     }
     res = ask_daemon(port, payload)
     if "error" in res:

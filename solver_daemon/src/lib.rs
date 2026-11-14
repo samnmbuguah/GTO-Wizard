@@ -58,6 +58,17 @@ pub struct SolverInput {
     /// Diagnostic: return the exact 169x169 showdown equity matrix.
     #[serde(default)]
     pub collect_equity: bool,
+    /// Number of sampled turn/river runouts used for flop/turn equity.
+    /// `None` uses the defaults (400 on the flop, all rivers on the turn).
+    /// Raising it reduces the sampling noise of the exact equity matrix, which
+    /// matters when generating training labels.
+    #[serde(default)]
+    pub equity_samples_override: Option<usize>,
+    /// Run to convergence (or the iteration cap) and ignore the wall-clock
+    /// limit. Used by audit/parity tooling so a re-solve reproduces the exact
+    /// numbers of the original solve.
+    #[serde(default)]
+    pub deterministic: bool,
     /// Internal: skip the learned leaf net and use exact showdown equity.
     /// Set by the retry path when the leaf net cannot meet the accuracy gates.
     #[serde(default)]
@@ -136,6 +147,27 @@ pub struct SolverOutput {
     /// Row-major 169x169 exact equity matrix, when requested.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub equity_matrix: Vec<f32>,
+    /// Row-major 169x169 equity matrix produced by the learned pair operator
+    /// (empty when the exact evaluator is in use). Used by the
+    /// Python<->Rust parity check.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pair_equity_matrix: Vec<f32>,
+    /// Diagnostics from the discarded learned-leaf attempt (only set when the
+    /// engine fell back to exact showdown). Makes the fallback auditable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leaf_attempt: Option<LeafAttempt>,
+}
+
+/// Why a learned-leaf attempt was rejected (and the numbers behind it).
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct LeafAttempt {
+    pub leaf_mode: String,
+    pub exploitability_pct_pot: f64,
+    pub converged: bool,
+    /// |EV_oop + EV_ip - post-rake starting pot|, in bb.
+    pub conservation_gap_bb: f64,
+    pub solve_time_ms: u128,
+    pub iterations: usize,
 }
 
 /// Runs the real CFR engine, falling back to the historical heuristic if the
@@ -150,12 +182,29 @@ pub fn evaluate_and_solve(input: SolverInput) -> SolverOutput {
             // a strategy that violates the exploitability or conservation
             // contract. The result is labelled so the caller can see it.
             if out.leaf_mode.starts_with("leaf-net") && !leaf_result_passes(&out, &input) {
+                // Diagnostics mode: keep the learned result so the learned
+                // equity matrix can be inspected (Python<->Rust parity).
+                if matches!(
+                    std::env::var("GTO_LEAF_FALLBACK").as_deref(),
+                    Ok("off") | Ok("0") | Ok("false") | Ok("no")
+                ) {
+                    return out;
+                }
                 let leaf_ms = out.solve_time_ms;
+                let attempt = LeafAttempt {
+                    leaf_mode: out.leaf_mode.clone(),
+                    exploitability_pct_pot: out.exploitability_pct_pot,
+                    converged: out.converged,
+                    conservation_gap_bb: conservation_violation(&input, out.oop_ev + out.ip_ev),
+                    solve_time_ms: leaf_ms,
+                    iterations: out.iterations,
+                };
                 let mut retry = input.clone();
                 retry.force_exact = true;
                 if let Ok(mut exact) = cfr::solve(&retry) {
                     exact.solve_time_ms += leaf_ms;
                     exact.leaf_mode = "exact-showdown (leaf-net fallback)".to_string();
+                    exact.leaf_attempt = Some(attempt);
                     return exact;
                 }
             }
@@ -171,12 +220,36 @@ pub fn evaluate_and_solve(input: SolverInput) -> SolverOutput {
     }
 }
 
+/// Zero-sum conservation check for the root EV of a solve.
+///
+/// The engine must not create or destroy chips: `EV_oop + EV_ip` has to equal
+/// the starting pot minus the rake that was actually paid. Rake is charged on
+/// the *final* pot (which includes the players' bets), so for a raked game the
+/// amount taken must lie between `rake(start pot)` and the cap. For a
+/// zero-rake game it must be exactly zero.
+///
+/// Returns the violation in bb (0 when the solve conserves the pot).
+fn conservation_violation(input: &SolverInput, ev_sum: f64) -> f64 {
+    let rake_paid = input.pot - ev_sum;
+    if input.rake_percent <= 0.0 || input.rake_cap <= 0.0 {
+        return rake_paid.abs();
+    }
+    let lo = input.rake_cap.min(input.pot * input.rake_percent / 100.0);
+    let hi = input.rake_cap;
+    if rake_paid < lo {
+        lo - rake_paid
+    } else if rake_paid > hi {
+        rake_paid - hi
+    } else {
+        0.0
+    }
+}
+
 /// Acceptance gate for a learned-leaf solve. Mirrors the published contract:
 /// exploitability at or below the solve target and root EV conservation within
 /// 0.35 bb of the post-rake pot.
 fn leaf_result_passes(out: &SolverOutput, input: &SolverInput) -> bool {
-    let net_pot = input.pot - (input.pot * input.rake_percent / 100.0).min(input.rake_cap);
-    let gap = (out.oop_ev + out.ip_ev - net_pot).abs();
+    let gap = conservation_violation(input, out.oop_ev + out.ip_ev);
     out.converged && out.exploitability_pct_pot <= 0.5 && gap <= 0.35
 }
 
@@ -341,6 +414,7 @@ pub fn evaluate_and_solve_heuristic(input: SolverInput) -> SolverOutput {
         exploitability,
         solve_time_ms: elapsed.max(1),
         iterations: iters,
+        leaf_attempt: None,
         strategy,
         overall_frequencies: ActionFrequencies {
             fold: avg_f,
@@ -364,6 +438,7 @@ pub fn evaluate_and_solve_heuristic(input: SolverInput) -> SolverOutput {
         leaf_samples: Vec::new(),
         leaf_mode: "heuristic".to_string(),
         equity_matrix: Vec::new(),
+        pair_equity_matrix: Vec::new(),
     }
 }
 

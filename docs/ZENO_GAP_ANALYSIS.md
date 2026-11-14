@@ -105,7 +105,7 @@ What is worth borrowing (not copying):
 | `.sif` upload | Present (zip `metadata.json` + `nodes.json`) | `utils.py` |
 | Live flop solve | **Real depth-limited CFR+** (169 classes, river exact, future streets = showdown equity) | `solver_daemon/src/cfr.rs`, `engine_bridge.py` |
 | Auto sizing | **Model retrained on real CFR `optimal_sizing`** (33% / all-in); still no live size search | `ml/models/size_predictor.py`, `ml/train.py` |
-| Leaf EV model | **Wired into the Rust solver**: antisymmetric 169×169 pair-equity operator with native inference (exact pot conservation); exact-showdown fallback if gates are missed | `ml/models/pair_equity_net.py`, `solver_daemon/src/leaf_net.rs` |
+| Leaf EV model | **Wired into the Rust solver**: dense antisymmetric 169×169 pair-equity operator (V2) with native f32 inference — exact pot conservation, 300/300 spots ≤0.5% pot exploitability; exact-showdown fallback if gates are missed | `ml/models/pair_equity_net_v2.py`, `ml/train_pair_equity_dense.py`, `solver_daemon/src/leaf_net.rs` |
 | Preflop library | Missing | — |
 | Custom preflop / ICM | Missing | — |
 | Real preflop / postflop node locking + re-solve | Missing (lock is cosmetic) | — |

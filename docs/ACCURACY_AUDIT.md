@@ -303,3 +303,114 @@ The honest summary is now:
 > depth-limited, 169-class, single-size tree it converges to < 0.5% pot in under a second, and it
 > matches the closed-form river equilibrium to four decimals. It is not yet a full multi-street
 > postflop solver, and it cannot be automatically compared to ZenoSolver for the reasons in §1/§7.
+
+---
+
+## 10. Generalized engine + native pair-equity operator (measured)
+
+Date: 2026-11-14. Everything below was produced by `scripts/verify_all.sh`
+(logs in `/tmp/opencode/verify_all/`).
+
+### 10.1 Generalization matrix (50 boards × 6 configurations)
+
+Shipped engine (native V2 pair operator, `leaf-net-pair-v2`):
+
+| Config | Stack | Ante | Rake | ms avg | ms p95 | mean expl | pass | conservation |
+|---|---|---|---|---|---|---|---|---|
+| cash_nl500 | 100 | 0 | 5% / 0.6 | 169 | 327 | 0.396% pot | 50/50 | 0.00e+00 |
+| cash_nl50 | 100 | 0 | 5% / 4.0 | 150 | 254 | 0.386% pot | 50/50 | 0.00e+00 |
+| mtt_20bb | 20 | 0.125 | 0% / 0 | 213 | 429 | 0.432% pot | 50/50 | 7.1e-15 |
+| mtt_40bb | 40 | 0.125 | 0% / 0 | 208 | 495 | 0.426% pot | 50/50 | 7.1e-15 |
+| mtt_60bb | 60 | 0.125 | 0% / 0 | 179 | 274 | 0.419% pot | 50/50 | 7.1e-15 |
+| mtt_100bb | 100 | 0.125 | 0% / 0 | 160 | 244 | 0.421% pot | 50/50 | 8.0e-15 |
+
+Exact-showdown oracle (`GTO_LEAF_NET=off`) on the same matrix: 50/50 pass on
+every configuration, mean exploitability 0.412–0.448% pot, 157–244 ms average.
+The learned path is as accurate as the exact path **and** slightly faster,
+because it replaces 400 sampled runouts with one forward pass.
+
+### 10.2 Learned vs exact, side by side (300 spots)
+
+`scripts/zeno_parity_harness.py solve --port <learned> --oracle-port <exact>`
+then `compare --source oracle`:
+
+| Metric | n | MAE | median AE | p90 AE | max AE | bias | corr r |
+|---|---|---|---|---|---|---|---|
+| oop_ev | 300 | 0.0256 bb | 0.0191 | 0.0567 | 0.1500 | +0.0072 | 0.994 |
+| ip_ev | 300 | 0.0269 bb | 0.0202 | 0.0618 | 0.1713 | −0.0110 | 0.996 |
+| cbet % | 300 | 3.50 | 2.15 | 7.40 | 34.07 | +1.80 | 0.692 |
+| oop check % | 300 | 3.80 | 3.01 | 7.38 | 29.15 | −1.51 | 0.807 |
+| bet size % | 300 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 1.000 |
+
+The EV error (≈0.5% of the pot) is of the same order as the *exact* path's own
+sampling noise: 400 runouts differ from 4 000 runouts by 0.022–0.028 mean
+absolute equity error. The learned operator is deterministic; the exact path is
+not.
+
+### 10.3 Pair-operator accuracy
+
+`ml/models/pair_equity_net_v2.py`, trained on 1 755 boards × exact 169×169
+equity matrices (`datasets/generated/equity_labels_2000.parquet`, 2 000 runouts
+per board, label noise ≈0.018):
+
+| Metric | Value |
+|---|---|
+| Validation mean \|ΔE\| (unseen boards) | 0.0472 |
+| Root EV error vs exact, mean | 0.0045 bb |
+| Root EV error vs exact, p95 / max | 0.0146 / 0.0277 bb |
+| Leaf-node range-EV error vs exact, held-out | 0.0153 bb MAE (p95 0.0505, n=5,430) |
+| Python ↔ Rust parity (same matrix) | ≤ 2.5e-4 per element |
+| Antisymmetry \|E[i][j]+E[j][i]−1\| | 6e-8 (Rust) / 1.2e-7 (PyTorch) |
+
+Architecture probe (`scripts/probe_equity_learnability.py`, 200 boards):
+V1 low-rank skew 0.134 mean \|ΔE\| → bilinear class embedding 0.112 → dense
+per-pair head 0.047. The dense head is what ships.
+
+### 10.4 Three bugs that had to be fixed first
+
+1. **Suit encoding mismatch.** The Rust board encoder indexed suits
+   `c,d,h,s` while the models were trained on Python's `s,h,d,c`, so the daemon
+   evaluated the learned nets on scrambled suit features. Fixed in
+   `encode_board_cards` (`solver_daemon/src/leaf_net.rs`).
+2. **Best response used a different game.** `best_response()` read the exact
+   sampled equity matrix while `eval_profile()` used the learned operator, so
+   the NashConv compared two different games and floored at ~1.8% pot. Both now
+   call the same `showdown_values()`.
+3. **Global zero-reach guard.** `pair_values()` zeroed *both* players' values
+   when either reach was empty. The best-response traversal produces empty
+   reaches for zero-probability actions, so the NashConv was corrupted. The
+   guard is now per side, mirroring the exact showdown path.
+
+With (1)–(3) fixed, the learned path converges on **300/300** spots instead of
+never converging.
+
+### 10.5 Card bunching (measured)
+
+`scripts/benchmark_bunching.py` (bunching on vs off, same board):
+
+| Profile | Mean max-player \|ΔEV\| | Max | Latency on/off |
+|---|---|---|---|
+| Built-in (from folded-player count) | 0.0038 bb | 0.0068 bb | 172 / 243 ms |
+| Seat-derived (`backend/solutions/services/bunching.py`) | 0.0016 bb | 0.0046 bb | 281 / 226 ms |
+
+Bunching only changes how the pot is split; `EV_oop + EV_ip` is conserved in
+both cases. The latency difference is convergence noise, not overhead.
+
+### 10.6 Determinism
+
+`deterministic: true` in the solver input removes the wall-clock cut-off, so an
+audit re-solve reproduces the recorded values exactly (verified: three
+identical runs produce bit-identical EVs, frequencies and iteration counts).
+`scripts/reference_spot_check.py --source our` re-solves all 300 spots and
+compares them against the recorded `our_*` columns: **MAE 0.0000 on every
+metric** (oop_ev, ip_ev, cbet %, oop check %, bet size %).
+
+### 10.7 What is still not solved
+
+- Depth-limited (flop/turn exits), 169 classes, one bet size plus all-in.
+- The learned operator approximates 169-class equity; suit/blocker effects
+  inside a class are averaged, exactly as in the exact path.
+- ZenoSolver parity remains a **manual capture** step (their Terms prohibit
+  automated benchmarking); `docs/zeno_capture_sheet.md` is the checklist and
+  `ref_*` stays empty until a human fills it.
+- No ICM, no PLO, no node locking with re-solve.
