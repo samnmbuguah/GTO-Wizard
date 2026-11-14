@@ -96,10 +96,13 @@ const DashboardView: React.FC = () => {
   const [solverLoading, setSolverLoading] = useState(false);
   const [solverResult, setSolverResult] = useState<any>(null);
   const [customSizes, setCustomSizes] = useState(() => localStorage.getItem('gto_default_sizes') || '0.33, 0.5, 0.75');
+  const [rakePreset, setRakePreset] = useState<'NL500' | 'NL50' | 'MTT' | 'Custom'>('NL500');
   const [customRake, setCustomRake] = useState(() => parseFloat(localStorage.getItem('gto_default_rake_percent') || '5.0'));
   const [customCap, setCustomCap] = useState(() => parseFloat(localStorage.getItem('gto_default_rake_cap') || '0.6'));
   const [customPot, setCustomPot] = useState(5.5);
   const [customStack, setCustomStack] = useState(100.0);
+  const [anteBb, setAnteBb] = useState<number>(0);
+  const [useBunching, setUseBunching] = useState<boolean>(true);
   const [openSize, setOpenSize] = useState(2.5);
   const [liveMode, setLiveMode] = useState(true);
   const [liveSolveStats, setLiveSolveStats] = useState<{
@@ -185,8 +188,11 @@ const DashboardView: React.FC = () => {
         spot: `${activePosition.replace(' vs ', '_vs_')}_${activeTab.replace(' ', '')}`,
         pot: customPot,
         effective_stack: customStack,
+        ante_bb: anteBb,
         rake_percent: customRake,
         rake_cap: customCap,
+        num_folded_players: useBunching ? 4 : 0,
+        use_bunching: useBunching,
         open_size: openSize
       };
       const res = await apiClient.post<any>('/solutions/live-solve/', payload);
@@ -261,7 +267,7 @@ const DashboardView: React.FC = () => {
       }
     };
     fetchData();
-  }, [resolvedSolutionId, board, liveMode, customRake, customCap, customPot, customStack, activePosition]);
+  }, [resolvedSolutionId, board, liveMode, customRake, customCap, customPot, customStack, anteBb, useBunching, activePosition]);
 
   const handleRetry = () => {
     // Re-trigger the resolveId by toggling a hidden state or just re-resolving
@@ -564,6 +570,25 @@ const DashboardView: React.FC = () => {
             </div>
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-[#a1b4d9] uppercase font-bold">Stack:</span>
+              <select
+                aria-label="Stack Depth Preset"
+                value={[20, 40, 60, 100].includes(customStack) ? String(customStack) : 'custom'}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v !== 'custom') {
+                    const num = parseFloat(v);
+                    setCustomStack(num);
+                    setActiveStack(String(num));
+                  }
+                }}
+                className="bg-[#0d1f1f] border border-[#2d393b] rounded px-1 py-0.5 text-white text-[11px] font-mono focus:outline-none focus:border-[#7aa6da]"
+              >
+                <option value="20">20bb</option>
+                <option value="40">40bb</option>
+                <option value="60">60bb</option>
+                <option value="100">100bb</option>
+                <option value="custom">Custom</option>
+              </select>
               <input
                 type="number"
                 step="5"
@@ -571,20 +596,54 @@ const DashboardView: React.FC = () => {
                 max="300"
                 value={customStack}
                 onChange={(e) => setCustomStack(parseFloat(e.target.value) || 100.0)}
-                className="w-14 bg-[#0d1f1f] border border-[#2d393b] rounded px-1.5 py-0.5 text-white text-[11px] font-mono text-center focus:outline-none focus:border-[#7aa6da]"
+                className="w-12 bg-[#0d1f1f] border border-[#2d393b] rounded px-1 py-0.5 text-white text-[11px] font-mono text-center focus:outline-none focus:border-[#7aa6da]"
               />
-              <span className="text-[10px] text-[#a1b4d9]">bb</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-[#a1b4d9] uppercase font-bold">Ante:</span>
+              <select
+                aria-label="Ante Size"
+                value={String(anteBb)}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value) || 0;
+                  setAnteBb(val);
+                  setUseAnte(val > 0);
+                  setCustomPot(val > 0 ? Number((openSize * 2 + 0.5 + val * 8).toFixed(2)) : openSize * 2 + 0.5);
+                }}
+                className="bg-[#0d1f1f] border border-[#2d393b] rounded px-1 py-0.5 text-white text-[11px] font-mono focus:outline-none focus:border-[#7aa6da]"
+              >
+                <option value="0">None</option>
+                <option value="0.12">0.12bb</option>
+                <option value="0.25">0.25bb</option>
+              </select>
             </div>
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-[#a1b4d9] uppercase font-bold">Rake:</span>
+              <select
+                aria-label="Rake Preset"
+                value={rakePreset}
+                onChange={(e) => {
+                  const p = e.target.value as 'NL500' | 'NL50' | 'MTT' | 'Custom';
+                  setRakePreset(p);
+                  if (p === 'NL500') { setCustomRake(5.0); setCustomCap(0.6); }
+                  else if (p === 'NL50') { setCustomRake(5.0); setCustomCap(4.0); }
+                  else if (p === 'MTT') { setCustomRake(0.0); setCustomCap(0.0); }
+                }}
+                className="bg-[#0d1f1f] border border-[#2d393b] rounded px-1 py-0.5 text-white text-[11px] font-mono focus:outline-none focus:border-[#7aa6da]"
+              >
+                <option value="NL500">NL500</option>
+                <option value="NL50">NL50</option>
+                <option value="MTT">None/MTT</option>
+                <option value="Custom">Custom</option>
+              </select>
               <input
                 type="number"
                 step="0.5"
                 min="0"
                 max="10"
                 value={customRake}
-                onChange={(e) => setCustomRake(parseFloat(e.target.value) || 0)}
-                className="w-12 bg-[#0d1f1f] border border-[#2d393b] rounded px-1.5 py-0.5 text-white text-[11px] font-mono text-center focus:outline-none focus:border-[#7aa6da]"
+                onChange={(e) => { setRakePreset('Custom'); setCustomRake(parseFloat(e.target.value) || 0); }}
+                className="w-11 bg-[#0d1f1f] border border-[#2d393b] rounded px-1 py-0.5 text-white text-[11px] font-mono text-center focus:outline-none focus:border-[#7aa6da]"
               />
               <span className="text-[10px] text-[#a1b4d9]">%</span>
             </div>
@@ -596,11 +655,23 @@ const DashboardView: React.FC = () => {
                 min="0"
                 max="5"
                 value={customCap}
-                onChange={(e) => setCustomCap(parseFloat(e.target.value) || 0)}
-                className="w-12 bg-[#0d1f1f] border border-[#2d393b] rounded px-1.5 py-0.5 text-white text-[11px] font-mono text-center focus:outline-none focus:border-[#7aa6da]"
+                onChange={(e) => { setRakePreset('Custom'); setCustomCap(parseFloat(e.target.value) || 0); }}
+                className="w-11 bg-[#0d1f1f] border border-[#2d393b] rounded px-1 py-0.5 text-white text-[11px] font-mono text-center focus:outline-none focus:border-[#7aa6da]"
               />
               <span className="text-[10px] text-[#a1b4d9]">bb</span>
             </div>
+            <button
+              type="button"
+              onClick={() => setUseBunching(!useBunching)}
+              title="6-Max Preflop Card Bunching (4 folded players)"
+              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border transition-colors ${
+                useBunching
+                  ? 'bg-[#2d393b] text-[#7aa6da] border-[#7aa6da]/50'
+                  : 'bg-[#0d1f1f] text-[#a1b4d9] border-[#2d393b]'
+              }`}
+            >
+              Bunching: {useBunching ? 'ON' : 'OFF'}
+            </button>
             <button
               onClick={() => board.length >= 3 && triggerLiveSolve(board)}
               disabled={fetchingData || board.length < 3}
