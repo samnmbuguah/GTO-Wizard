@@ -105,18 +105,20 @@ What is worth borrowing (not copying):
 | `.sif` upload | Present (zip `metadata.json` + `nodes.json`) | `utils.py` |
 | Live flop solve | **Real depth-limited CFR+** (169 classes, river exact, future streets = showdown equity) | `solver_daemon/src/cfr.rs`, `engine_bridge.py` |
 | Auto sizing | **Model retrained on real CFR `optimal_sizing`** (33% / all-in); still no live size search | `ml/models/size_predictor.py`, `ml/train.py` |
-| Leaf EV model | **Wired into the Rust solver**: range-conditioned 169-class equity-share net with native inference; exact-showdown fallback if gates are missed | `ml/models/leaf_value_net.py`, `solver_daemon/src/leaf_net.rs` |
+| Leaf EV model | **Wired into the Rust solver**: antisymmetric 169×169 pair-equity operator with native inference (exact pot conservation); exact-showdown fallback if gates are missed | `ml/models/pair_equity_net.py`, `solver_daemon/src/leaf_net.rs` |
 | Preflop library | Missing | — |
 | Custom preflop / ICM | Missing | — |
 | Real preflop / postflop node locking + re-solve | Missing (lock is cosmetic) | — |
 | River reports | Missing | — |
 | Play vs. solver with EV loss | Missing (quiz only) | — |
 | Hand history analyzer | Missing | — |
-| Card bunching | **Implemented** (rank-weighted removal via `num_folded_players`) | `solver_daemon/src/cfr.rs` (`card_bunching_weights`) |
+| Card bunching | **Implemented**: rank-weighted dead-card removal from the folded-player count, plus an optional seat-derived 13-rank profile (`bunching_weights`) | `solver_daemon/src/cfr.rs` (`card_bunching_weights`, `resolve_bunching_weights`), `backend/solutions/services/bunching.py` |
 | PLO | Missing | — |
 | My trees / saved custom solves | Partial (solutions table) | — |
 | Share links | Missing | — |
 | i18n / phone-specific layout | Missing | — |
+| Dynamic rake / stack / ante presets | **Implemented** in the UI (NL500 / NL50 / MTT / custom rake, 20/40/60/100bb, ante 0/0.12/0.25bb) and in the engine payload | `frontend/src/components/DashboardView.tsx`, `backend/solutions/live_views.py` |
+| Zeno side-by-side parity harness | **Implemented** (ToS-compliant): our side + exact-CFR oracle automated, Zeno values captured manually | `scripts/zeno_parity_harness.py`, `scripts/reference_spot_check.py`, `docs/zeno_capture_sheet.md` |
 
 ---
 
@@ -151,10 +153,43 @@ What is worth borrowing (not copying):
 ### P2 — differentiation
 
 13. Custom preflop + ICM (9-handed, payouts).
-14. Card bunching.
+14. ~~Card bunching.~~ **Done** (rank-weighted dead-card removal + seat-derived profile).
 15. PLO / PLO5 / O8.
 16. Hand history analyzer.
 17. i18n + phone layout.
+
+---
+
+## 4.1 Comparing against Zeno without breaking their Terms
+
+Zeno has no public API and their Terms prohibit bots, scripts and benchmarking, so
+an automated A/B scrape is off the table. The parity harness therefore automates
+everything on *our* side and leaves only a small, manual capture step:
+
+```bash
+# 1. Solve the whole spot matrix with our engine and with an exact-CFR oracle
+#    (GTO_LEAF_NET=off) and write the capture sheet.
+python scripts/zeno_parity_harness.py solve --port 9998 --oracle-port 9971
+
+# 2. A human reads the numbers off the Zeno UI (one pass over the sheet) and
+#    fills the zeno_* columns of docs/zeno_capture_sheet.csv.
+
+# 3. Merge the captured values and produce the side-by-side report.
+python scripts/zeno_parity_harness.py import --capture docs/zeno_capture_sheet.csv
+python scripts/zeno_parity_harness.py compare --source auto
+```
+
+| Artifact | What it is |
+|---|---|
+| `docs/reference_spots.example.csv` | The spot matrix with our values (`our_*`), the exact-CFR oracle values (`oracle_*`) and the Zeno capture slots (`ref_*`, empty until a human fills them) |
+| `docs/zeno_capture_sheet.md` / `.csv` | Per-spot capture checklist: exactly which five numbers to read from Zeno |
+| `docs/ZENO_PARITY_REPORT.md` | Generated parity table (per-metric MAE, median/p90/max absolute error, signed bias, correlation) |
+| `scripts/reference_spot_check.py` | Standalone comparator: re-solves each row (or uses the recorded `our_*` columns) and prints the deltas |
+
+The harness never contacts zenosolver.com, and no Zeno value is ever invented:
+`ref_*` stays empty until a human enters it, and the report states which source
+it compared against. Until then `compare` falls back to the exact-CFR oracle, which
+is an honest reference implementation but **not** a Zeno number.
 
 ---
 
@@ -173,9 +208,11 @@ strip, EV-diff column, one-click Strategy/EV/Equity views, category breakdown, a
 ## 6. Verdict
 
 Feature-wise we are missing most of Zeno's moat: multi-street solving, preflop/ICM, node-locking with
-re-solve, river reports, Play mode, bunching, PLO and HH analysis. The engine gap has narrowed: the
+re-solve, river reports, Play mode, PLO and HH analysis. The engine gap has narrowed: the
 live endpoint now runs a real CFR solver with measured exploitability (0.477% pot mean over 50
 boards, 50/50 converged, ~0.3–0.9 s per flop), validated against a closed-form river equilibrium. It
-is still depth-limited and 169-class, so it is not yet a full postflop solver. The UI remains closer
+is still depth-limited and 169-class, so it is not yet a full postflop solver. Card bunching, dynamic
+rake, MTT stack/ante handling and the UI presets for them are in place; the Zeno comparison itself is
+limited to manually captured reference values, for the reasons in §1/§4.1. The UI remains closer
 in spirit than the engine, and it is still built around seeded data rather than a multi-street tree.
 Measured details and limitations: `docs/ACCURACY_AUDIT.md` §9.

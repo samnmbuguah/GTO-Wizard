@@ -50,6 +50,13 @@ class LiveSolveView(APIView):
         rake_cap = float(request.data.get("rake_cap", 0.6))
         num_folded_players = int(request.data.get("num_folded_players", 4))
         use_bunching = bool(request.data.get("use_bunching", True))
+        folded_positions = request.data.get("folded_positions") or []
+        bunching_weights = request.data.get("bunching_weights") or []
+        if bunching_weights and len(bunching_weights) != 13:
+            return Response(
+                {"error": "bunching_weights must contain 13 rank weights (2..A)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         open_size = float(request.data.get("open_size", 2.5))
 
         # Validate board
@@ -95,6 +102,8 @@ class LiveSolveView(APIView):
                     rake_cap=rake_cap,
                     num_folded_players=num_folded_players,
                     use_bunching=use_bunching,
+                    bunching_weights=[float(w) for w in bunching_weights],
+                    folded_positions=[str(p) for p in folded_positions],
                     max_bets_per_node=1
                 )
             )

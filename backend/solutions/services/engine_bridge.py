@@ -83,6 +83,22 @@ class EngineBridge:
         rake_cap = float(raw_data.get("rake_cap", 3.0))
         num_folded_players = int(raw_data.get("num_folded_players", 4))
         use_bunching = bool(raw_data.get("use_bunching", True))
+        # Seats that folded preflop. When given, the dead-card profile is
+        # derived from those seats' opening ranges (see services/bunching.py).
+        folded_positions = raw_data.get("folded_positions") or []
+        if folded_positions and "num_folded_players" not in raw_data:
+            num_folded_players = len(folded_positions)
+        # Optional explicit rank-survival profile (13 values, 2..A). Callers that
+        # know the folded seats' ranges can pass a seat-derived profile; the
+        # daemon otherwise derives one from `num_folded_players`.
+        bunching_weights = raw_data.get("bunching_weights") or []
+        if not bunching_weights and folded_positions:
+            from .bunching import derive_bunching_weights
+            bunching_weights = derive_bunching_weights(
+                folded_positions, rake_percent, rake_cap
+            )
+        if bunching_weights and len(bunching_weights) != 13:
+            raise ValueError("bunching_weights must contain 13 rank weights (2..A).")
         max_bets_per_node = int(raw_data.get("max_bets_per_node", raw_data.get("max_sizes_per_node", 1)))
 
         return {
@@ -96,6 +112,8 @@ class EngineBridge:
             "rake_cap": rake_cap,
             "num_folded_players": num_folded_players,
             "use_bunching": use_bunching,
+            "bunching_weights": [float(w) for w in bunching_weights],
+            "folded_positions": [str(p) for p in folded_positions],
             "max_bets_per_node": max_bets_per_node,
             "target_dEV": float(raw_data.get("target_dEV", 0.005)),
             "max_iterations": int(raw_data.get("max_iterations", 500)),

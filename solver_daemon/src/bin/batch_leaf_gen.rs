@@ -265,6 +265,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         ante_bb: 0.0,
                         num_folded_players: 4,
                         use_bunching: true,
+                        bunching_weights: Vec::new(),
                         collect_equity: false,
                         force_exact: false,
                     };
@@ -329,6 +330,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ante_bb: 0.0,
                     num_folded_players: 4,
                     use_bunching: true,
+                    bunching_weights: Vec::new(),
                     collect_equity: false,
                     force_exact: false,
                 };

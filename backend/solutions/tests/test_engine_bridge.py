@@ -42,6 +42,27 @@ class EngineBridgeDataContractTests(SimpleTestCase):
         with self.assertRaises(ValueError):
             self.bridge.normalize_request_payload(invalid_payload)
 
+    def test_bunching_weights_are_passed_through(self):
+        payload = dict(self.valid_payload)
+        payload["bunching_weights"] = [1.0] * 13
+        norm = self.bridge.normalize_request_payload(payload)
+        self.assertEqual(len(norm["bunching_weights"]), 13)
+
+    def test_bunching_weights_are_derived_from_folded_positions(self):
+        payload = dict(self.valid_payload)
+        payload["folded_positions"] = ["UTG", "MP", "CO"]
+        norm = self.bridge.normalize_request_payload(payload)
+        self.assertEqual(len(norm["bunching_weights"]), 13)
+        self.assertEqual(norm["num_folded_players"], 3)
+        # Low cards are deader than aces when early positions fold.
+        self.assertLess(norm["bunching_weights"][0], norm["bunching_weights"][12])
+
+    def test_invalid_bunching_weights_are_rejected(self):
+        payload = dict(self.valid_payload)
+        payload["bunching_weights"] = [1.0, 2.0]
+        with self.assertRaises(ValueError):
+            self.bridge.normalize_request_payload(payload)
+
     def test_solve_fallback_when_daemon_unreachable(self):
         # Point to an unreachable port to test local fallback
         offline_bridge = EngineBridge(host="127.0.0.1", port=49151, timeout_sec=0.2)

@@ -49,6 +49,12 @@ pub struct SolverInput {
     /// Whether preflop card bunching / removal is active.
     #[serde(default = "default_use_bunching")]
     pub use_bunching: bool,
+    /// Optional explicit per-rank bunching survival weights, 13 values with
+    /// index 0 = '2' ... 12 = 'A'. When empty, weights are derived from
+    /// `num_folded_players`. Normalized to mean 1.0. This lets a caller supply
+    /// seat/position-derived removal weights instead of the built-in profile.
+    #[serde(default)]
+    pub bunching_weights: Vec<f64>,
     /// Diagnostic: return the exact 169x169 showdown equity matrix.
     #[serde(default)]
     pub collect_equity: bool,
@@ -143,7 +149,7 @@ pub fn evaluate_and_solve(input: SolverInput) -> SolverOutput {
             // gates, retry the same spot with exact equity rather than return
             // a strategy that violates the exploitability or conservation
             // contract. The result is labelled so the caller can see it.
-            if out.leaf_mode == "leaf-net" && !leaf_result_passes(&out, &input) {
+            if out.leaf_mode.starts_with("leaf-net") && !leaf_result_passes(&out, &input) {
                 let leaf_ms = out.solve_time_ms;
                 let mut retry = input.clone();
                 retry.force_exact = true;

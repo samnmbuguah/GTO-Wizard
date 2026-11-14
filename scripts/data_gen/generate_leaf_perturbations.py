@@ -77,7 +77,7 @@ def perturb(weights: Dict[str, float], rng: np.random.Generator, sigma: float,
 
 def build_leaf_rows(board: List[str], board_tag: str, res: Dict[str, Any],
                     pot: float, stack: float, rake_pct: float, rake_cap: float,
-                    folded: int) -> List[Dict[str, Any]]:
+                    folded: int, ante_bb: float = 0.0) -> List[Dict[str, Any]]:
     rows = []
     for idx, ls in enumerate(res.get("leaf_samples", [])):
         inv_o = float(ls["invested"][0])
@@ -92,7 +92,7 @@ def build_leaf_rows(board: List[str], board_tag: str, res: Dict[str, Any],
             "pot": tot_pot,
             "net_pot": tot_pot - rake,
             "effective_stack": stack,
-            "ante_bb": 0.0,
+            "ante_bb": ante_bb,
             "rake_percent": rake_pct,
             "rake_cap": rake_cap,
             "num_folded_players": folded,
@@ -117,11 +117,10 @@ def main() -> int:
     ap.add_argument("--rake-cap", type=float, default=0.6)
     ap.add_argument("--max-iterations", type=int, default=2000)
     ap.add_argument("--time-limit-ms", type=int, default=5000)
-    ap.add_argument("--out", default=str(REPO_ROOT / "datasets/generated/nl500_100bb_leaf_cfr_aug.parquet"))
+    ap.add_argument("--out", default=str(REPO_ROOT / "datasets/generated/leaf_cfr_aug_multiconfig.parquet"))
     args = ap.parse_args()
 
     ports = [int(p) for p in args.ports.split(",") if p.strip()]
-    oop0, ip0 = PreflopRangeService.get_spot_ranges("BTN_vs_BB_SRP", args.rake_pct, args.rake_cap)
 
     base = pd.read_parquet(REPO_ROOT / "datasets/generated/nl500_100bb_leaf_cfr.parquet")
     boards = []
@@ -131,6 +130,48 @@ def main() -> int:
         if key not in seen:
             seen.add(key)
             boards.append(list(b))
+
+    # Each board was solved under one configuration in the stratified root
+    # dataset. Re-use that exact configuration here so the augmentation covers
+    # cash NL500/NL50 and MTT 20-100bb with the right stack/ante/rake/bunching.
+    configs: Dict[str, Dict[str, Any]] = {}
+    root_path = REPO_ROOT / "datasets/generated/nl500_100bb_real_cfr.parquet"
+    if root_path.exists():
+        root = pd.read_parquet(root_path)
+        for r in root.itertuples(index=False):
+            key = " ".join(list(r.board))
+            configs[key] = {
+                "pot": float(r.pot),
+                "stack": float(r.effective_stack),
+                "ante": float(getattr(r, "ante_bb", 0.0)),
+                "rake": float(r.rake_percent),
+                "cap": float(r.rake_cap),
+                "folded": int(getattr(r, "num_folded_players", 4))
+                if bool(getattr(r, "use_bunching", True)) else 0,
+                "bunching": bool(getattr(r, "use_bunching", True)),
+            }
+        print(f"Loaded per-board configs for {len(configs)} boards from {root_path.name}")
+
+    default_cfg = {
+        "pot": args.pot, "stack": args.stack, "ante": 0.0,
+        "rake": args.rake_pct, "cap": args.rake_cap,
+        "folded": 4, "bunching": True,
+    }
+
+    # Precompute root ranges per (rake, cap); ranges are rake-sensitive.
+    range_cache: Dict[Tuple[float, float], Tuple[Dict[str, float], Dict[str, float]]] = {}
+    for cfg in configs.values():
+        key = (round(cfg["rake"], 4), round(cfg["cap"], 4))
+        if key not in range_cache:
+            range_cache[key] = PreflopRangeService.get_spot_ranges(
+                "BTN_vs_BB_SRP", cfg["rake"], cfg["cap"]
+            )
+    dkey = (round(default_cfg["rake"], 4), round(default_cfg["cap"], 4))
+    if dkey not in range_cache:
+        range_cache[dkey] = PreflopRangeService.get_spot_ranges(
+            "BTN_vs_BB_SRP", default_cfg["rake"], default_cfg["cap"]
+        )
+
     print(f"Boards: {len(boards)} | perturbations/board: {args.perturbations} | workers: {len(ports)}")
 
     shards: List[Tuple[int, List[List[str]]]] = []
@@ -142,6 +183,8 @@ def main() -> int:
         rng = np.random.default_rng(args.seed + port)
         for n, board in enumerate(shard, 1):
             board_tag = " ".join(board)
+            cfg = configs.get(board_tag, default_cfg)
+            oop0, ip0 = range_cache[(round(cfg["rake"], 4), round(cfg["cap"], 4))]
             for k in range(args.perturbations):
                 if k == 0:
                     oop, ip = oop0, ip0
@@ -152,10 +195,13 @@ def main() -> int:
                     "board": board,
                     "oop_range": oop,
                     "ip_range": ip,
-                    "pot": args.pot,
-                    "effective_stack": args.stack,
-                    "rake_percent": args.rake_pct,
-                    "rake_cap": args.rake_cap,
+                    "pot": cfg["pot"],
+                    "effective_stack": cfg["stack"],
+                    "ante_bb": cfg["ante"],
+                    "rake_percent": cfg["rake"],
+                    "rake_cap": cfg["cap"],
+                    "num_folded_players": cfg["folded"],
+                    "use_bunching": cfg["bunching"],
                     "max_bets_per_node": 1,
                     "target_dEV": 0.005,
                     "max_iterations": args.max_iterations,
@@ -165,8 +211,9 @@ def main() -> int:
                 res = ask_daemon(port, payload)
                 if "error" in res:
                     raise RuntimeError(res["error"])
-                out.extend(build_leaf_rows(board, f"{board_tag}_p{k}", res, args.pot,
-                                           args.stack, args.rake_pct, args.rake_cap, 4))
+                out.extend(build_leaf_rows(board, f"{board_tag}_p{k}", res, cfg["pot"],
+                                           cfg["stack"], cfg["rake"], cfg["cap"],
+                                           cfg["folded"], ante_bb=cfg["ante"]))
             if n % 10 == 0:
                 print(f"  port {port}: {n}/{len(shard)} boards ({len(out)} leaf rows)")
         return out

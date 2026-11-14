@@ -433,6 +433,34 @@ pub fn card_bunching_weights(num_folded_players: usize) -> [f64; 13] {
     weights
 }
 
+/// Resolves the per-rank survival weights used by the solver.
+///
+/// * `use_bunching == false` disables removal entirely (all weights 1.0).
+/// * A 13-value `explicit` profile (e.g. derived from the folded seats' ranges)
+///   takes precedence; it is clamped positive and normalized to mean 1.0.
+/// * Otherwise the built-in profile is derived from `num_folded_players`.
+pub fn resolve_bunching_weights(
+    use_bunching: bool,
+    explicit: &[f64],
+    num_folded_players: usize,
+) -> [f64; 13] {
+    if !use_bunching {
+        return [1.0; 13];
+    }
+    if explicit.len() == 13 {
+        let mut w = [1.0f64; 13];
+        for i in 0..13 {
+            w[i] = explicit[i].max(0.01);
+        }
+        let mean_w: f64 = w.iter().sum::<f64>() / 13.0;
+        for x in &mut w {
+            *x /= mean_w;
+        }
+        return w;
+    }
+    card_bunching_weights(num_folded_players)
+}
+
 /// equity[i][j] = OOP class i's share (win = 1, tie = 0.5) against IP class j.
 fn compute_equity(
     classes: &[HandClass],
@@ -803,6 +831,10 @@ struct Solver<'a> {
     range_o: &'a [f64],
     range_i: &'a [f64],
     leaf_net: Option<&'static crate::leaf_net::LeafNet>,
+    /// Board-conditioned antisymmetric pair-equity matrix (169x169). It depends
+    /// only on the board, so it is computed once per solve; the induced payoff
+    /// is linear in the opponent's reach and conserves the pot exactly.
+    equity_pair: Option<Vec<f64>>,
     /// Per-public-leaf equity shares, evaluated once from the average strategy
     /// of a short exact-equity warm-up. A fixed vector per node keeps the leaf
     /// payoff linear in the opponent's reach, which is what CFR and best
@@ -835,6 +867,19 @@ impl<'a> Solver<'a> {
         reach_o: &[f64],
         reach_i: &[f64],
     ) -> (Vec<f64>, Vec<f64>) {
+        // The pair operator is reach-independent and conserves the pot exactly,
+        // so it takes precedence over the marginal-share cache.
+        if let Some(e) = self.equity_pair.as_deref() {
+            return crate::leaf_net::pair_values(
+                e,
+                invested,
+                self.pot,
+                self.rake_pct * 100.0,
+                self.rake_cap,
+                reach_o,
+                reach_i,
+            );
+        }
         if let Some(net) = self.leaf_net {
             if let Some(shares) = self.leaf_shares.get(leaf_key).and_then(|s| s.as_ref()) {
                 return crate::leaf_net::LeafNet::shares_to_values(
@@ -1509,12 +1554,21 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
     } else {
         0
     };
-    let bunching_weights = card_bunching_weights(effective_folded);
+    let bunching_weights = resolve_bunching_weights(
+        input.use_bunching,
+        &input.bunching_weights,
+        effective_folded,
+    );
 
     let oop_dist = normalized_reach(&oop_weights, &classes, &board, &bunching_weights);
     let ip_dist = normalized_reach(&ip_weights, &classes, &board, &bunching_weights);
 
-    let leaf_net = if input.force_exact {
+    let pair_net = if input.force_exact {
+        None
+    } else {
+        crate::leaf_net::get_pair_net()
+    };
+    let leaf_net = if input.force_exact || pair_net.is_some() {
         None
     } else {
         crate::leaf_net::get_leaf_net()
@@ -1522,6 +1576,19 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
     let board_ranks: Vec<u8> = board.iter().map(|c| c.rank).collect();
     let board_suits: Vec<u8> = board.iter().map(|c| c.suit).collect();
     let board_features = crate::leaf_net::encode_board_cards(&board_ranks, &board_suits);
+    // One forward pass per solve: E depends only on the board and folded count.
+    let equity_pair = pair_net.map(|n| {
+        n.equity_matrix(
+            &board_features,
+            input.pot,
+            input.effective_stack,
+            input.ante_bb,
+            input.rake_percent,
+            input.rake_cap,
+            effective_folded,
+        )
+    });
+    let has_learned_leaves = pair_net.is_some() || leaf_net.is_some();
 
     let (eq, runouts) = {
         let equity_samples = if board.len() >= 5 {
@@ -1573,6 +1640,7 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
         range_o: &oop_dist,
         range_i: &ip_dist,
         leaf_net,
+        equity_pair,
         leaf_shares: vec![None; n_nodes],
         pot: input.pot,
         effective_stack: input.effective_stack,
@@ -1591,7 +1659,7 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
     // A learned-leaf attempt can be discarded and retried with exact equity.
     // Cap the learned attempt so the worst-case roundtrip (attempt + retry)
     // still fits the sub-second contract.
-    let attempt_deadline = if leaf_net.is_some() {
+    let attempt_deadline = if has_learned_leaves {
         time_limit_ms.min(600)
     } else {
         time_limit_ms
@@ -1716,7 +1784,9 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
     let converged = solver.converged;
     let exploit_bb = solver.exploit_bb;
     let exploit_pct = solver.exploit_pct;
-    let leaf_mode = if solver.leaf_net.is_some() && solver.leaf_shares.iter().any(|s| s.is_some()) {
+    let leaf_mode = if solver.equity_pair.is_some() {
+        "leaf-net-pair".to_string()
+    } else if solver.leaf_net.is_some() && solver.leaf_shares.iter().any(|s| s.is_some()) {
         "leaf-net".to_string()
     } else {
         "exact-showdown".to_string()
@@ -1944,5 +2014,25 @@ mod tests {
         let mean: f64 = w4.iter().sum::<f64>() / 13.0;
         assert!((mean - 1.0).abs() < 1e-9, "mean bunching weight must be 1.0, got {mean}");
         assert!(w4[12] > w4[0], "Ace survival ({}) should exceed Deuce ({})", w4[12], w4[0]);
+    }
+
+    #[test]
+    fn explicit_bunching_profile_overrides_and_normalizes() {
+        // Disabled bunching is a no-op regardless of the supplied profile.
+        let off = resolve_bunching_weights(false, &[2.0; 13], 4);
+        assert!(off.iter().all(|w| (w - 1.0).abs() < 1e-12));
+
+        // An explicit profile is clamped and normalized to mean 1.0.
+        let mut explicit = [1.0f64; 13];
+        explicit[12] = 3.0; // aces survive more
+        explicit[0] = 0.0;  // clamped to 0.01
+        let w = resolve_bunching_weights(true, &explicit, 4);
+        let mean: f64 = w.iter().sum::<f64>() / 13.0;
+        assert!((mean - 1.0).abs() < 1e-9, "explicit profile must be normalized");
+        assert!(w[12] > w[0], "explicit rank ordering must be preserved");
+
+        // No explicit profile falls back to the folded-count model.
+        let fallback = resolve_bunching_weights(true, &[], 4);
+        assert_eq!(fallback, card_bunching_weights(4));
     }
 }
