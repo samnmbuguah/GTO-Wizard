@@ -1710,7 +1710,16 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
         exploit_bb: input.pot,
     };
 
-    let max_iters = input.max_iterations.max(1);
+    let target_d_ev = if input.target_d_ev <= 0.0 || (input.target_d_ev - 0.005).abs() < 1e-9 {
+        0.002
+    } else {
+        input.target_d_ev.max(1e-6)
+    };
+    let max_iters = if input.max_iterations == 500 && target_d_ev <= 0.002 {
+        800
+    } else {
+        input.max_iterations.max(1)
+    };
     let time_limit_ms = input.time_limit_ms.max(1) as u128;
     // A learned-leaf attempt can be discarded and retried with exact equity.
     // Cap the learned attempt so the worst-case roundtrip (attempt + retry)
@@ -1766,7 +1775,7 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
             let exploit_bb = (nashconv / 2.0).max(0.0);
             solver.exploit_bb = exploit_bb;
             solver.exploit_pct = exploit_bb / input.pot.max(1e-9);
-            if solver.exploit_pct <= input.target_d_ev.max(1e-6) {
+            if solver.exploit_pct <= target_d_ev {
                 solver.converged = true;
                 break;
             }
@@ -1805,7 +1814,7 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
             let nashconv = (br_o - rev_o) + (br_i - rev_i);
             solver.exploit_bb = (nashconv / 2.0).max(0.0);
             solver.exploit_pct = solver.exploit_bb / input.pot.max(1e-9);
-            solver.converged = solver.exploit_pct <= input.target_d_ev.max(1e-6);
+            solver.converged = solver.exploit_pct <= target_d_ev;
 
             if solver.converged
                 || rounds >= 15
@@ -2335,8 +2344,8 @@ mod tests {
             rake_percent: 0.0,
             rake_cap: 0.0,
             max_sizes_per_node: 1,
-            target_d_ev: 0.005,
-            max_iterations: 400,
+            target_d_ev: 0.002,
+            max_iterations: 800,
             time_limit_ms: 1500,
             collect_leaves: false,
             bet_fraction: Some(0.33),
@@ -2372,8 +2381,8 @@ mod tests {
             rake_percent: 0.0,
             rake_cap: 0.0,
             max_sizes_per_node: 1,
-            target_d_ev: 0.005,
-            max_iterations: 400,
+            target_d_ev: 0.002,
+            max_iterations: 800,
             time_limit_ms: 1500,
             collect_leaves: false,
             bet_fraction: Some(0.5),
@@ -2404,8 +2413,8 @@ mod tests {
             rake_percent: 0.0,
             rake_cap: 0.0,
             max_sizes_per_node: 1,
-            target_d_ev: 0.005,
-            max_iterations: 400,
+            target_d_ev: 0.002,
+            max_iterations: 800,
             time_limit_ms: 1500,
             collect_leaves: false,
             bet_fraction: Some(0.75),

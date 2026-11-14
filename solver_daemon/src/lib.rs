@@ -85,8 +85,8 @@ pub fn default_stack() -> f64 { 97.0 }
 pub fn default_rake() -> f64 { 5.0 }
 pub fn default_cap() -> f64 { 3.0 }
 pub fn default_max_sizes() -> usize { 1 }
-pub fn default_dev() -> f64 { 0.005 }
-pub fn default_iters() -> usize { 500 }
+pub fn default_dev() -> f64 { 0.002 }
+pub fn default_iters() -> usize { 800 }
 pub fn default_time_limit() -> u64 { 1500 }
 pub fn default_folded_players() -> usize { 4 }
 pub fn default_use_bunching() -> bool { true }

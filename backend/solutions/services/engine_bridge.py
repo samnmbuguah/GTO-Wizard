@@ -116,8 +116,8 @@ class EngineBridge:
             "bunching_weights": [float(w) for w in bunching_weights],
             "folded_positions": [str(p) for p in folded_positions],
             "max_bets_per_node": max_bets_per_node,
-            "target_dEV": float(raw_data.get("target_dEV", 0.005)),
-            "max_iterations": int(raw_data.get("max_iterations", 500)),
+            "target_dEV": float(raw_data.get("target_dEV", 0.002)),
+            "max_iterations": int(raw_data.get("max_iterations", 800)),
             "action_sequence": [str(a) for a in action_sequence],
             # Audit / dataset-generation knobs. They are optional and are only
             # forwarded when the caller sets them, so the live API keeps the

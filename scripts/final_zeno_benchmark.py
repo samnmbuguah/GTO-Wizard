@@ -285,8 +285,8 @@ async def run_check_1_leafnet_vs_exact(bridge: EngineBridge, exact_samples: int)
             use_bunching=True,
             folded_positions=folded,
             max_bets_per_node=1,
-            target_dEV=0.005,
-            max_iterations=500,
+            target_dEV=0.002,
+            max_iterations=800,
             deterministic=True,
         )
         res_leaf = await bridge.solve_flop(**base_kwargs, force_exact=False)
@@ -391,8 +391,8 @@ async def run_check_2_invariants(bridge: EngineBridge) -> bool:
                 use_bunching=True,
                 folded_positions=spec["folded_positions"],
                 max_bets_per_node=1,
-                target_dEV=0.005,
-                max_iterations=500,
+                target_dEV=0.002,
+                max_iterations=800,
                 deterministic=True,
                 action_sequence=[],
             )
@@ -436,8 +436,8 @@ async def run_check_2_invariants(bridge: EngineBridge) -> bool:
                     use_bunching=True,
                     folded_positions=spec["folded_positions"],
                     max_bets_per_node=1,
-                    target_dEV=0.005,
-                    max_iterations=500,
+                    target_dEV=0.002,
+                    max_iterations=800,
                     deterministic=True,
                     action_sequence=actions,
                 )
@@ -472,8 +472,8 @@ async def run_check_2_invariants(bridge: EngineBridge) -> bool:
             use_bunching=True,
             folded_positions=["UTG", "MP", "CO", "SB"],
             max_bets_per_node=1,
-            target_dEV=0.005,
-            max_iterations=500,
+            target_dEV=0.002,
+            max_iterations=800,
             deterministic=True,
         )
         ev_sum = float(r_res["oop_ev"]) + float(r_res["ip_ev"])
@@ -510,8 +510,8 @@ async def run_check_2_invariants(bridge: EngineBridge) -> bool:
             use_bunching=False,
             folded_positions=[],
             max_bets_per_node=1,
-            target_dEV=0.005,
-            max_iterations=500,
+            target_dEV=0.002,
+            max_iterations=800,
             deterministic=True,
         )
         b_on = await bridge.solve_flop(
@@ -526,8 +526,8 @@ async def run_check_2_invariants(bridge: EngineBridge) -> bool:
             use_bunching=True,
             folded_positions=["UTG", "MP", "CO", "SB"],
             max_bets_per_node=1,
-            target_dEV=0.005,
-            max_iterations=500,
+            target_dEV=0.002,
+            max_iterations=800,
             deterministic=True,
         )
         delta_oop = abs(float(b_on["oop_ev"]) - float(b_off["oop_ev"]))
@@ -575,8 +575,8 @@ async def run_check_3_comparison_sheet(bridge: EngineBridge, exact_samples: int)
             use_bunching=True,
             folded_positions=spot["folded_positions"],
             max_bets_per_node=1,
-            target_dEV=0.005,
-            max_iterations=500,
+            target_dEV=0.002,
+            max_iterations=800,
             deterministic=True,
         )
         res_live = await bridge.solve_flop(**base, force_exact=False)

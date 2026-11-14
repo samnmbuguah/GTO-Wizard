@@ -771,38 +771,45 @@ pub fn pair_values(
     // stopped CFR from converging. The exact showdown path has always
     // guarded each side separately; this mirrors it exactly.
     if m_i > 1e-12 {
-        let rin: Vec<f64> = reach_i.iter().map(|x| x / m_i).collect();
+        let active_i: Vec<(usize, f64)> = reach_i
+            .iter()
+            .copied()
+            .enumerate()
+            .filter(|&(_, r)| r != 0.0)
+            .map(|(j, r)| (j, r / m_i))
+            .collect();
         for i in 0..N_CLASSES {
             let base = i * N_CLASSES;
+            let row = &e[base..base + N_CLASSES];
             let mut share = 0.0;
-            for j in 0..N_CLASSES {
-                if rin[j] != 0.0 {
-                    share += e[base + j] * rin[j];
-                }
+            for &(j, rin_j) in &active_i {
+                share += row[j] * rin_j;
             }
             v_o[i] = (share * net_pot - invested[0]) * m_i;
         }
     } else {
-        for h in 0..N_CLASSES {
-            v_o[h] = -invested[0] * m_i;
-        }
+        v_o.fill(-invested[0] * m_i);
     }
 
     if m_o > 1e-12 {
-        let ron: Vec<f64> = reach_o.iter().map(|x| x / m_o).collect();
-        for j in 0..N_CLASSES {
-            let mut share = 0.0;
-            for (h, r) in ron.iter().enumerate() {
-                if *r != 0.0 {
-                    share += r * e[h * N_CLASSES + j];
-                }
+        let mut shares_i = [0.0f64; N_CLASSES];
+        for h in 0..N_CLASSES {
+            let r_oh = reach_o[h];
+            if r_oh == 0.0 {
+                continue;
             }
-            v_i[j] = ((1.0 - share) * net_pot - invested[1]) * m_o;
+            let ron_h = r_oh / m_o;
+            let base = h * N_CLASSES;
+            let row = &e[base..base + N_CLASSES];
+            for j in 0..N_CLASSES {
+                shares_i[j] += ron_h * row[j];
+            }
+        }
+        for j in 0..N_CLASSES {
+            v_i[j] = ((1.0 - shares_i[j]) * net_pot - invested[1]) * m_o;
         }
     } else {
-        for h in 0..N_CLASSES {
-            v_i[h] = -invested[1] * m_o;
-        }
+        v_i.fill(-invested[1] * m_o);
     }
     (v_o, v_i)
 }
