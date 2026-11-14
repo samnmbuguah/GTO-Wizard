@@ -270,6 +270,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         equity_samples_override: None,
                         deterministic: false,
                         force_exact: false,
+                        action_sequence: Vec::new(),
                     };
 
                     let solve_start = Instant::now();
@@ -337,6 +338,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     equity_samples_override: None,
                     deterministic: false,
                     force_exact: false,
+                    action_sequence: Vec::new(),
                 };
 
                 let solve_start = Instant::now();

@@ -73,6 +73,11 @@ pub struct SolverInput {
     /// Set by the retry path when the leaf net cannot meet the accuracy gates.
     #[serde(default)]
     pub force_exact: bool,
+    /// Intra-street action sequence from the root of the current street
+    /// (e.g. `["Check", "Bet 33%", "Call"]`) used to navigate the tree and
+    /// compute Bayes-updated posterior ranges for Turn/River transitions.
+    #[serde(default)]
+    pub action_sequence: Vec<String>,
 }
 
 pub fn default_pot() -> f64 { 6.5 }
@@ -156,6 +161,42 @@ pub struct SolverOutput {
     /// engine fell back to exact showdown). Makes the fallback auditable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leaf_attempt: Option<LeafAttempt>,
+    /// Street name based on board length ("Flop", "Turn", or "River").
+    #[serde(default)]
+    pub street: String,
+    /// Acting player at the reached node ("OOP", "IP", "Showdown", or "Terminal").
+    #[serde(default)]
+    pub acting_player: String,
+    /// Exact action labels available at the reached decision node.
+    #[serde(default)]
+    pub available_actions: Vec<String>,
+    /// Reach-weighted overall frequency per action label at the reached node.
+    #[serde(default)]
+    pub action_frequencies: HashMap<String, f64>,
+    /// True when `action_sequence` reaches a street-closing Showdown node.
+    #[serde(default)]
+    pub street_closed: bool,
+    /// True when `action_sequence` ends in a Fold node.
+    #[serde(default)]
+    pub terminal_fold: bool,
+    /// Pot size at the reached node (`pot + invested[0] + invested[1]`).
+    #[serde(default)]
+    pub next_street_pot: f64,
+    /// Remaining effective stack at the reached node.
+    #[serde(default)]
+    pub next_street_stack: f64,
+    /// Bayes-updated OOP 169-class weights after `action_sequence` (dead combos = 0.0).
+    #[serde(default)]
+    pub posterior_oop_range: HashMap<String, f64>,
+    /// Bayes-updated IP 169-class weights after `action_sequence` (dead combos = 0.0).
+    #[serde(default)]
+    pub posterior_ip_range: HashMap<String, f64>,
+    /// Exact count of unblocked 2-card combos per hand class on the current board.
+    #[serde(default)]
+    pub alive_combos: HashMap<String, usize>,
+    /// Normalized reach probability per hand class for the acting player at the reached node.
+    #[serde(default)]
+    pub active_reach: HashMap<String, f64>,
 }
 
 /// Why a learned-leaf attempt was rejected (and the numbers behind it).
@@ -439,6 +480,22 @@ pub fn evaluate_and_solve_heuristic(input: SolverInput) -> SolverOutput {
         leaf_mode: "heuristic".to_string(),
         equity_matrix: Vec::new(),
         pair_equity_matrix: Vec::new(),
+        street: match input.board.len() {
+            4 => "Turn".to_string(),
+            5 => "River".to_string(),
+            _ => "Flop".to_string(),
+        },
+        acting_player: "OOP".to_string(),
+        available_actions: vec!["Check".to_string(), format!("Bet {:.0}%", optimal_sizing * 100.0)],
+        action_frequencies: HashMap::new(),
+        street_closed: false,
+        terminal_fold: false,
+        next_street_pot: input.pot,
+        next_street_stack: input.effective_stack,
+        posterior_oop_range: input.oop_range.clone(),
+        posterior_ip_range: input.ip_range.clone(),
+        alive_combos: HashMap::new(),
+        active_reach: HashMap::new(),
     }
 }
 

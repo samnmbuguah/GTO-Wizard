@@ -117,6 +117,7 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
     const node = nodes.find(n => n.hand === hand);
     const isSelected = selectedHand === hand;
     const handIsLocked = !!locks[hand];
+    const isBlocked = node?.combos === 0;
     
     // Default actions if no GTO data
     const actions = node?.actions || {};
@@ -134,23 +135,27 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
     let gradientStops: string[] = [];
     let currentPct = 0;
 
-    actionEntries.forEach(([action, freq]) => {
-      const pct = freq * 100;
-      if (pct > 0) {
-        const color = getActionColor(action);
-        gradientStops.push(`${color} ${currentPct}%`, `${color} ${currentPct + pct}%`);
-        currentPct += pct;
-      }
-    });
+    if (!isBlocked) {
+      actionEntries.forEach(([action, freq]) => {
+        const pct = freq * 100;
+        if (pct > 0) {
+          const color = getActionColor(action);
+          gradientStops.push(`${color} ${currentPct}%`, `${color} ${currentPct + pct}%`);
+          currentPct += pct;
+        }
+      });
+    }
 
     const backgroundStyle = gradientStops.length > 0 
       ? `linear-gradient(to right, ${gradientStops.join(', ')})`
       : COLORS.gray;
     
     // Calculate tooltip text
-    const tooltipText = actionEntries.length > 0 
-      ? actionEntries.map(([action, freq]) => `${action}: ${(freq * 100).toFixed(0)}%`).join(', ')
-      : 'No data';
+    const tooltipText = isBlocked
+      ? 'Blocked by board (0 combos)'
+      : actionEntries.length > 0 
+        ? actionEntries.map(([action, freq]) => `${action}: ${(freq * 100).toFixed(0)}%`).join(', ')
+        : 'No data';
     
     return (
       <button
@@ -162,6 +167,7 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
         className={`
           relative w-full h-7 border-[0.1px] border-[#182628]/30 overflow-hidden flex flex-col group
           hover:opacity-90 transition-opacity
+          ${isBlocked ? 'opacity-30 grayscale' : ''}
           ${isSelected ? 'ring-1 ring-white/50 z-10' : ''}
           ${handIsLocked ? 'ring-1 ring-yellow-500/50 z-10' : ''}
         `}
@@ -227,12 +233,21 @@ const StrategyMatrix: React.FC<StrategyMatrixProps> = ({ nodes, onHandSelect }) 
 
               <div className="grid grid-cols-2 gap-8 mt-10 w-full text-center">
                 <div>
-                  <p className="text-[14px] font-bold uppercase tracking-wider mb-2">Weighting</p>
-                  <p className="text-xl font-black">14.2%</p>
+                  <p className="text-[14px] font-bold uppercase tracking-wider mb-2">Weight / Combos</p>
+                  <p className="text-xl font-black">
+                    {selectedNode.weight !== undefined
+                      ? `${(selectedNode.weight * 100).toFixed(1)}%`
+                      : '—'}
+                    {selectedNode.combos !== undefined ? ` (${selectedNode.combos})` : ''}
+                  </p>
                 </div>
                 <div>
                   <p className="text-[14px] font-bold uppercase tracking-wider mb-2">EV</p>
-                  <p className="text-xl font-black">+5.24 BB</p>
+                  <p className="text-xl font-black">
+                    {selectedNode.ev !== undefined
+                      ? `${selectedNode.ev >= 0 ? '+' : ''}${selectedNode.ev.toFixed(2)} BB`
+                      : '—'}
+                  </p>
                 </div>
               </div>
               

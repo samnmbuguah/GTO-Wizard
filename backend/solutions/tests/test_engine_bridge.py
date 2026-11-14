@@ -101,3 +101,29 @@ class EngineBridgeDataContractTests(SimpleTestCase):
             self.assertLess(res["solve_time_ms"], 2000)
         finally:
             loop.close()
+
+    def test_action_sequence_and_formation_ranges(self):
+        from solutions.services.range_service import PreflopRangeService
+
+        norm = self.bridge.normalize_request_payload({
+            **self.valid_payload,
+            "action_sequence": ["Check", "Bet 33%", "Call"],
+        })
+        self.assertEqual(norm["action_sequence"], ["Check", "Bet 33%", "Call"])
+
+        parsed = PreflopRangeService.parse_range_input("AA:1.0, KK:0.8, AKs, AQo:0.5")
+        self.assertEqual(parsed["AA"], 1.0)
+        self.assertEqual(parsed["KK"], 0.8)
+        self.assertEqual(parsed["AKs"], 1.0)
+        self.assertEqual(parsed["AQo"], 0.5)
+
+        for spot in (
+            "UTG_vs_BB_SRP", "MP_vs_BB_SRP", "CO_vs_BB_SRP", "BTN_vs_BB_SRP", "SB_vs_BB_SRP",
+            "BTN_vs_SB_3BET", "BTN_vs_BB_3BET", "CO_vs_BTN_3BET", "SB_vs_BB_3BET",
+            "BTN_vs_BB_4BET", "CO_vs_BTN_4BET",
+        ):
+            oop_r, ip_r = PreflopRangeService.get_spot_ranges(spot, rake_percent=5.0, rake_cap=0.6)
+            meta = PreflopRangeService.get_spot_metadata(spot)
+            self.assertGreater(len(oop_r), 0, spot)
+            self.assertGreater(len(ip_r), 0, spot)
+            self.assertEqual(len(meta["folded_positions"]), 4, spot)

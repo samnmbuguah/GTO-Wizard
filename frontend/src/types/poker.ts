@@ -11,6 +11,8 @@ export interface StrategyNode {
   actions: ActionFrequencies;
   ev?: number;
   equity?: number;
+  weight?: number;
+  combos?: number;
 }
 
 export interface Solution {
@@ -50,5 +52,19 @@ export interface LiveSolveResponse {
   btn_cbet_frequency?: number;
   bb_check_frequency?: number;
   btn_check_frequency?: number;
+  street?: string;
+  acting_player?: string;
+  available_actions?: string[];
+  action_frequencies?: Record<string, number>;
+  street_closed?: boolean;
+  terminal_fold?: boolean;
+  next_street_pot?: number;
+  next_street_stack?: number;
+  posterior_oop_range?: Record<string, number>;
+  posterior_ip_range?: Record<string, number>;
+  alive_combos?: Record<string, number>;
+  active_reach?: Record<string, number>;
+  starting_oop_range?: Record<string, number>;
+  starting_ip_range?: Record<string, number>;
 }
 

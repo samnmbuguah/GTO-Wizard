@@ -43,46 +43,52 @@ export const foldedSeatsFor = (position: string, headsUp = false): string[] => {
   return SIX_MAX_SEATS.filter((seat) => seat !== oop && seat !== ip);
 };
 
-const TAB_CONFIG: Record<string, Record<string, TabConfig>> = {
-  '100': {
-    'SRP': {
-      categories: [{ positions: ['SB vs BB', 'BTN vs BB', 'CO vs BB', 'MP vs BB', 'UTG vs BB', 'MP vs BTN', 'UTG vs BTN'] }]
-    },
-    '3 BET': {
-      categories: [
-        { positions: ['BB vs SB', 'BB vs BTN', 'BB vs CO', 'BB vs MP', 'BB vs UTG', 'SB vs BTN', 'SB vs CO', 'SB vs MP', 'SB vs UTG', 'BTN vs CO', 'BTN vs MP', 'BTN vs UTG', 'CO vs MP', 'CO vs UTG', 'MP vs UTG'] },
-        { name: 'SQUEEZE', positions: ['BB vs BTN', 'BB vs MP', 'SB vs BTN', 'SB vs MP'] }
-      ]
-    },
-    '4 BET': {
-      categories: [
-        { positions: ['SB vs BB', 'BTN vs BB', 'BTN vs SB', 'CO vs BB', 'CO vs SB', 'CO vs BTN', 'MP vs BB', 'MP vs SB', 'MP vs BTN', 'MP vs CO', 'UTG vs BTN', 'UTG vs CO'] },
-        { name: 'COLD 4 BET', positions: ['BB vs SB', 'BB vs BTN', 'BB vs CO', 'BTN vs CO'] }
-      ]
-    },
-    'HU': {
-      categories: [{ positions: ['SRP', '3 BET', '4 BET'] }]
-    }
+const makeTabConfig = (hasSrp: boolean): Record<string, TabConfig> => ({
+  'SRP': {
+    categories: hasSrp
+      ? [{ positions: ['SB vs BB', 'BTN vs BB', 'CO vs BB', 'MP vs BB', 'UTG vs BB', 'MP vs BTN', 'UTG vs BTN'] }]
+      : [],
   },
-  '150': {
-    'SRP': {
-      categories: [] // Empty as per 150bb reference
-    },
-    '3 BET': {
-      categories: [
-        { positions: ['BB vs SB', 'BB vs BTN', 'BB vs CO', 'BB vs MP', 'BB vs UTG', 'SB vs BTN', 'SB vs CO', 'SB vs MP', 'SB vs UTG', 'BTN vs CO', 'BTN vs MP', 'BTN vs UTG', 'CO vs MP', 'CO vs UTG', 'MP vs UTG'] }
-      ]
-    },
-    '4 BET': {
-      categories: [
-        { positions: ['SB vs BB', 'BTN vs BB', 'BTN vs SB', 'CO vs BB', 'CO vs SB', 'CO vs BTN', 'MP vs BB', 'MP vs SB', 'MP vs BTN', 'MP vs CO', 'UTG vs BTN', 'UTG vs CO'] },
-        { name: 'COLD 4 BET', positions: ['BB vs SB', 'BB vs BTN', 'BB vs CO', 'BTN vs CO'] }
-      ]
-    },
-    'HU': {
-      categories: [{ positions: ['3 BET', '4 BET'] }]
-    }
+  '3 BET': {
+    categories: [
+      { positions: ['BTN vs SB', 'BTN vs BB', 'CO vs BTN', 'SB vs BB', 'BB vs SB', 'BB vs BTN', 'BB vs CO', 'BB vs MP', 'BB vs UTG', 'SB vs BTN', 'SB vs CO', 'SB vs MP', 'SB vs UTG', 'BTN vs CO', 'BTN vs MP', 'BTN vs UTG', 'CO vs MP', 'CO vs UTG', 'MP vs UTG'] },
+      { name: 'SQUEEZE', positions: ['BB vs BTN', 'BB vs MP', 'SB vs BTN', 'SB vs MP'] }
+    ]
+  },
+  '4 BET': {
+    categories: [
+      { positions: ['BTN vs BB', 'CO vs BTN', 'SB vs BB', 'BTN vs SB', 'CO vs BB', 'CO vs SB', 'MP vs BB', 'MP vs SB', 'MP vs BTN', 'MP vs CO', 'UTG vs BTN', 'UTG vs CO'] },
+      { name: 'COLD 4 BET', positions: ['BB vs SB', 'BB vs BTN', 'BB vs CO', 'BTN vs CO'] }
+    ]
+  },
+  'HU': {
+    categories: [{ positions: hasSrp ? ['SRP', '3 BET', '4 BET'] : ['3 BET', '4 BET'] }]
   }
+});
+
+const TAB_CONFIG: Record<string, Record<string, TabConfig>> = {
+  '20': makeTabConfig(true),
+  '40': makeTabConfig(true),
+  '60': makeTabConfig(true),
+  '100': makeTabConfig(true),
+  '150': makeTabConfig(false),
+};
+
+const formatRangeWeights = (rangeObj?: Record<string, number>): string => {
+  if (!rangeObj) return '';
+  return Object.entries(rangeObj)
+    .filter(([, w]) => w > 0.001)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([hand, w]) => (Math.abs(w - 1.0) < 0.01 ? hand : `${hand}:${Number(w.toFixed(2))}`))
+    .join(', ');
+};
+
+const defaultPotForFormation = (tab: string, position: string, openSize: number, anteBb: number): number => {
+  const deadAnte = anteBb > 0 ? anteBb * 8 : 0;
+  if (tab === '4 BET') return Number((45.5 + deadAnte).toFixed(2));
+  if (tab === '3 BET') return Number((18.5 + deadAnte).toFixed(2));
+  const baseSrp = position === 'SB vs BB' ? 6.0 : openSize * 2 + 0.5;
+  return Number((baseSrp + deadAnte).toFixed(2));
 };
 
 const CANONICAL_PRESETS = [
@@ -133,7 +139,38 @@ const DashboardView: React.FC = () => {
     oopEv?: number;
     ipEv?: number;
     overallFrequencies?: { fold: number; call: number; raise: number };
+    street?: string;
+    actingPlayer?: string;
+    availableActions?: string[];
+    actionFrequencies?: Record<string, number>;
+    streetClosed?: boolean;
+    terminalFold?: boolean;
+    nextStreetPot?: number;
+    nextStreetStack?: number;
+    posteriorOopRange?: Record<string, number>;
+    posteriorIpRange?: Record<string, number>;
   } | null>(null);
+
+  // Multi-street transition state & Custom Range Editor
+  const [flopActions, setFlopActions] = useState<string[]>([]);
+  const [turnActions, setTurnActions] = useState<string[]>([]);
+  const [riverActions, setRiverActions] = useState<string[]>([]);
+  const [turnEntryState, setTurnEntryState] = useState<{
+    oopRange?: Record<string, number>;
+    ipRange?: Record<string, number>;
+    pot?: number;
+    stack?: number;
+  } | null>(null);
+  const [riverEntryState, setRiverEntryState] = useState<{
+    oopRange?: Record<string, number>;
+    ipRange?: Record<string, number>;
+    pot?: number;
+    stack?: number;
+  } | null>(null);
+  const [showRangeEditor, setShowRangeEditor] = useState<boolean>(false);
+  const [customRangeActive, setCustomRangeActive] = useState<boolean>(false);
+  const [customOopRangeText, setCustomOopRangeText] = useState<string>('');
+  const [customIpRangeText, setCustomIpRangeText] = useState<string>('');
 
   const getFlopTexture = (cards: string[]) => {
     if (cards.length < 3) return '';
@@ -194,30 +231,79 @@ const DashboardView: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Live Solve Calculation Function
-  const triggerLiveSolve = async (currentBoard: string[]) => {
+  // Live Solve Calculation Function (supports Flop -> Turn -> River + Bayes transitions)
+  const triggerLiveSolve = async (
+    currentBoard: string[],
+    opts?: {
+      flopActs?: string[];
+      turnActs?: string[];
+      riverActs?: string[];
+      turnEntry?: { oopRange?: Record<string, number>; ipRange?: Record<string, number>; pot?: number; stack?: number } | null;
+      riverEntry?: { oopRange?: Record<string, number>; ipRange?: Record<string, number>; pot?: number; stack?: number } | null;
+      forceOopText?: string;
+      forceIpText?: string;
+      useCustomRanges?: boolean;
+    }
+  ) => {
     if (currentBoard.length < 3) return;
     setFetchingData(true);
     setError(null);
     try {
-      const payload = {
+      const fActs = opts?.flopActs ?? flopActions;
+      const tActs = opts?.turnActs ?? turnActions;
+      const rActs = opts?.riverActs ?? riverActions;
+      const tEntry = opts?.turnEntry !== undefined ? opts.turnEntry : turnEntryState;
+      const rEntry = opts?.riverEntry !== undefined ? opts.riverEntry : riverEntryState;
+      const applyCustom = opts?.useCustomRanges ?? customRangeActive;
+      const oopText = opts?.forceOopText ?? customOopRangeText;
+      const ipText = opts?.forceIpText ?? customIpRangeText;
+
+      let activeActionSeq = fActs;
+      let solvePot = customPot;
+      let solveStack = customStack;
+      let oopOverride: string | Record<string, number> | undefined = applyCustom && oopText.trim() ? oopText : undefined;
+      let ipOverride: string | Record<string, number> | undefined = applyCustom && ipText.trim() ? ipText : undefined;
+
+      if (currentBoard.length === 4) {
+        activeActionSeq = tActs;
+        if (tEntry?.oopRange && tEntry?.ipRange) {
+          oopOverride = tEntry.oopRange;
+          ipOverride = tEntry.ipRange;
+          if (tEntry.pot !== undefined) solvePot = tEntry.pot;
+          if (tEntry.stack !== undefined) solveStack = tEntry.stack;
+        }
+      } else if (currentBoard.length === 5) {
+        activeActionSeq = rActs;
+        if (rEntry?.oopRange && rEntry?.ipRange) {
+          oopOverride = rEntry.oopRange;
+          ipOverride = rEntry.ipRange;
+          if (rEntry.pot !== undefined) solvePot = rEntry.pot;
+          if (rEntry.stack !== undefined) solveStack = rEntry.stack;
+        }
+      }
+
+      const payload: any = {
         board: currentBoard,
         spot: `${activePosition.replace(' vs ', '_vs_')}_${activeTab.replace(' ', '')}`,
-        pot: customPot,
-        effective_stack: customStack,
+        pot: solvePot,
+        effective_stack: solveStack,
         ante_bb: anteBb,
         rake_percent: customRake,
         rake_cap: customCap,
         num_folded_players: useBunching ? 4 : 0,
         use_bunching: useBunching,
         folded_positions: useBunching ? foldedSeatsFor(activePosition, activeTab === 'HU') : [],
-        open_size: openSize
+        open_size: openSize,
+        action_sequence: activeActionSeq,
+        flop_actions: fActs,
+        turn_actions: tActs,
       };
+      if (oopOverride) payload.oop_range = oopOverride;
+      if (ipOverride) payload.ip_range = ipOverride;
+
       const res = await apiClient.post<any>('/solutions/live-solve/', payload);
       if (res && res.strategy) {
-        // Map solved 13x13 strategy matrix into StrategyNode format for the matrix view.
-        // Prefer the engine's real action labels (Check / Bet 33% / All-in / ...).
-        // Only fall back to the fold/call/raise buckets if they are unavailable.
+        const streetPath = currentBoard.length === 4 ? 'turn' : currentBoard.length === 5 ? 'river' : 'root';
         const generatedNodes: StrategyNode[] = Object.entries(res.strategy).map(([hand, acts]: [string, any], idx) => {
           const detail = res.strategy_detail?.[hand];
           const actions =
@@ -226,11 +312,13 @@ const DashboardView: React.FC = () => {
               : { Fold: acts.fold, Call: acts.call, Raise: acts.raise };
           return {
             id: idx + 1,
-            path: 'root',
+            path: streetPath,
             hand: hand,
             actions,
             ev: res.hand_ev?.[hand] ?? 0.0,
             equity: 0.5,
+            weight: res.active_reach?.[hand],
+            combos: res.alive_combos?.[hand],
           };
         });
         setNodes(generatedNodes);
@@ -244,8 +332,22 @@ const DashboardView: React.FC = () => {
           engine: res.engine || 'Rust DCFR Engine',
           oopEv: res.oop_ev ?? undefined,
           ipEv: res.ip_ev ?? undefined,
-          overallFrequencies: res.overall_frequencies
+          overallFrequencies: res.overall_frequencies,
+          street: res.street,
+          actingPlayer: res.acting_player,
+          availableActions: res.available_actions,
+          actionFrequencies: res.action_frequencies,
+          streetClosed: res.street_closed,
+          terminalFold: res.terminal_fold,
+          nextStreetPot: res.next_street_pot,
+          nextStreetStack: res.next_street_stack,
+          posteriorOopRange: res.posterior_oop_range,
+          posteriorIpRange: res.posterior_ip_range,
         });
+        if (!applyCustom && res.starting_oop_range && res.starting_ip_range) {
+          setCustomOopRangeText(formatRangeWeights(res.starting_oop_range));
+          setCustomIpRangeText(formatRangeWeights(res.starting_ip_range));
+        }
         setResolvedSolutionId('live_solution');
       }
     } catch (err: any) {
@@ -285,7 +387,22 @@ const DashboardView: React.FC = () => {
       }
     };
     fetchData();
-  }, [resolvedSolutionId, board, liveMode, customRake, customCap, customPot, customStack, anteBb, useBunching, activePosition]);
+  }, [
+    resolvedSolutionId,
+    board,
+    liveMode,
+    customRake,
+    customCap,
+    customPot,
+    customStack,
+    anteBb,
+    useBunching,
+    activePosition,
+    activeTab,
+    flopActions,
+    turnActions,
+    riverActions,
+  ]);
 
   const handleRetry = () => {
     // Re-trigger the resolveId by toggling a hidden state or just re-resolving
@@ -297,22 +414,35 @@ const DashboardView: React.FC = () => {
   };
 
   const tabs = useMemo(() => Object.keys(TAB_CONFIG['100']), []);
-  const stacks = ['100', '150'];
+  const stacks = ['100', '150', '60', '40', '20'];
   
   const currentTabConfig = useMemo(() => TAB_CONFIG[activeStack]?.[activeTab] || { categories: [] }, [activeTab, activeStack]);
+
+  const clearActionTrees = () => {
+    setFlopActions([]);
+    setTurnActions([]);
+    setRiverActions([]);
+    setTurnEntryState(null);
+    setRiverEntryState(null);
+  };
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
     const config = TAB_CONFIG[activeStack]?.[tab];
-    if (config && config.categories.length > 0) {
-      setActivePosition(config.categories[0].positions[0]);
-    } else {
-      setActivePosition('');
+    const nextPos = config && config.categories.length > 0 ? config.categories[0].positions[0] : '';
+    setActivePosition(nextPos);
+    if (nextPos) {
+      setCustomPot(defaultPotForFormation(tab, nextPos, openSize, anteBb));
     }
+    clearActionTrees();
   };
 
   const handleStackChange = (stack: string) => {
     setActiveStack(stack);
+    const numStack = parseFloat(stack);
+    if (!isNaN(numStack)) {
+      setCustomStack(numStack);
+    }
     const config = TAB_CONFIG[stack]?.[activeTab];
     if (config && config.categories.length > 0) {
       const allPositions = config.categories.flatMap(c => c.positions);
@@ -322,30 +452,97 @@ const DashboardView: React.FC = () => {
     } else {
       setActivePosition('');
     }
+    clearActionTrees();
+  };
+
+  const handlePositionChange = (pos: string) => {
+    setActivePosition(pos);
+    setCustomPot(defaultPotForFormation(activeTab, pos, openSize, anteBb));
+    clearActionTrees();
   };
 
   const handleCardToggle = (card: string) => {
-    setBoard(prev => {
-      const next = prev.includes(card) 
-        ? prev.filter(c => c !== card) 
-        : (prev.length < 3 ? [...prev, card] : [prev[0], prev[1], card]);
-      if (liveMode && next.length >= 3) {
-        triggerLiveSolve(next);
+    const existingIdx = board.indexOf(card);
+    if (existingIdx !== -1) {
+      if (existingIdx < 3) {
+        setBoard(board.slice(0, 3).filter(c => c !== card));
+        clearActionTrees();
+      } else if (existingIdx === 3) {
+        setBoard(board.slice(0, 3));
+        setTurnActions([]);
+        setRiverActions([]);
+        setTurnEntryState(null);
+        setRiverEntryState(null);
+      } else {
+        setBoard(board.slice(0, 4));
+        setRiverActions([]);
+        setRiverEntryState(null);
       }
-      return next;
-    });
+      return;
+    }
+
+    if (board.length < 3) {
+      clearActionTrees();
+      setBoard([...board, card]);
+    } else if (board.length === 3) {
+      setTurnEntryState({
+        oopRange: liveSolveStats?.posteriorOopRange,
+        ipRange: liveSolveStats?.posteriorIpRange,
+        pot: liveSolveStats?.nextStreetPot ?? customPot,
+        stack: liveSolveStats?.nextStreetStack ?? customStack,
+      });
+      setTurnActions([]);
+      setRiverActions([]);
+      setRiverEntryState(null);
+      setBoard([...board, card]);
+    } else if (board.length === 4) {
+      setRiverEntryState({
+        oopRange: liveSolveStats?.posteriorOopRange,
+        ipRange: liveSolveStats?.posteriorIpRange,
+        pot: liveSolveStats?.nextStreetPot ?? turnEntryState?.pot ?? customPot,
+        stack: liveSolveStats?.nextStreetStack ?? turnEntryState?.stack ?? customStack,
+      });
+      setRiverActions([]);
+      setBoard([...board, card]);
+    } else {
+      setRiverActions([]);
+      setBoard([board[0], board[1], board[2], board[3], card]);
+    }
   };
 
   const handleReset = () => {
     setBoard([]);
+    clearActionTrees();
   };
 
   const handlePreflopClick = () => {
     handleReset();
     setActiveTab('SRP');
     setActivePosition('SB vs BB');
+    setCustomPot(5.5);
     localStorage.removeItem('gto_active_solution');
   };
+
+  type BreadcrumbStep = { label: string; kind: 'preflop' | 'flop' | 'turn' | 'river'; actLen: number };
+  const breadcrumbSteps: BreadcrumbStep[] = [
+    { label: 'Preflop', kind: 'preflop', actLen: 0 },
+    {
+      label: board.length >= 3 ? `Flop (${board.slice(0, 3).join(' ')})` : 'Flop Decision',
+      kind: 'flop',
+      actLen: 0,
+    },
+    ...(board.length >= 3
+      ? flopActions.map((act, idx) => ({ label: act, kind: 'flop' as const, actLen: idx + 1 }))
+      : []),
+    ...(board.length >= 4 ? [{ label: `Turn (${board[3]})`, kind: 'turn' as const, actLen: 0 }] : []),
+    ...(board.length >= 4
+      ? turnActions.map((act, idx) => ({ label: act, kind: 'turn' as const, actLen: idx + 1 }))
+      : []),
+    ...(board.length === 5 ? [{ label: `River (${board[4]})`, kind: 'river' as const, actLen: 0 }] : []),
+    ...(board.length === 5
+      ? riverActions.map((act, idx) => ({ label: act, kind: 'river' as const, actLen: idx + 1 }))
+      : []),
+  ];
 
   const runDynamicSolve = async () => {
     if (!resolvedSolutionId) return;
@@ -435,7 +632,7 @@ const DashboardView: React.FC = () => {
                   {category.positions.map((pos) => (
                     <button 
                       key={pos} 
-                      onClick={() => setActivePosition(pos)}
+                      onClick={() => handlePositionChange(pos)}
                       className={`w-full py-2 px-3 rounded text-[11px] font-bold text-center transition-all border-l-[3px] shadow-sm
                         ${activePosition === pos 
                           ? 'bg-[#465f61] text-white border-[#7aa6da] scale-[1.02]' 
@@ -554,7 +751,7 @@ const DashboardView: React.FC = () => {
 
           <div className="flex flex-wrap items-center gap-2 mt-2 sm:mt-0">
             <span className="text-[9.5px] font-mono font-bold text-[#64ffda] bg-[#64ffda]/10 px-1.5 py-0.5 rounded border border-[#64ffda]/30 uppercase">
-              6-Max NL500
+              6-Max {rakePreset === 'Custom' ? `${customRake}%` : rakePreset} • {activePosition || 'Custom'} {activeTab}
             </span>
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-[#a1b4d9] uppercase font-bold">Open:</span>
@@ -567,7 +764,7 @@ const DashboardView: React.FC = () => {
                 onChange={(e) => {
                   const val = parseFloat(e.target.value) || 2.5;
                   setOpenSize(val);
-                  setCustomPot(val * 2 + 0.5);
+                  setCustomPot(defaultPotForFormation(activeTab, activePosition, val, anteBb));
                 }}
                 className="w-11 bg-[#0d1f1f] border border-[#2d393b] rounded px-1.5 py-0.5 text-white text-[11px] font-mono text-center focus:outline-none focus:border-[#7aa6da]"
               />
@@ -626,7 +823,7 @@ const DashboardView: React.FC = () => {
                   const val = parseFloat(e.target.value) || 0;
                   setAnteBb(val);
                   setUseAnte(val > 0);
-                  setCustomPot(val > 0 ? Number((openSize * 2 + 0.5 + val * 8).toFixed(2)) : openSize * 2 + 0.5);
+                  setCustomPot(defaultPotForFormation(activeTab, activePosition, openSize, val));
                 }}
                 className="bg-[#0d1f1f] border border-[#2d393b] rounded px-1 py-0.5 text-white text-[11px] font-mono focus:outline-none focus:border-[#7aa6da]"
               >
@@ -691,6 +888,35 @@ const DashboardView: React.FC = () => {
               Bunching: {useBunching ? 'ON' : 'OFF'}
             </button>
             <button
+              type="button"
+              aria-label="Custom Ranges"
+              onClick={async () => {
+                const nextOpen = !showRangeEditor;
+                setShowRangeEditor(nextOpen);
+                if (nextOpen && !customOopRangeText && !customIpRangeText) {
+                  try {
+                    const spotName = `${activePosition.replace(' vs ', '_vs_')}_${activeTab.replace(' ', '')}`;
+                    const meta = await apiClient.get<any>(
+                      `/solutions/formation-ranges/?spot=${encodeURIComponent(spotName)}&rake_percent=${customRake}`
+                    );
+                    if (meta?.oop_range && meta?.ip_range) {
+                      setCustomOopRangeText(formatRangeWeights(meta.oop_range));
+                      setCustomIpRangeText(formatRangeWeights(meta.ip_range));
+                    }
+                  } catch (e) {
+                    console.error('Failed to load formation ranges:', e);
+                  }
+                }
+              }}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border transition-colors ${
+                showRangeEditor || customRangeActive
+                  ? 'bg-[#2d393b] text-[#64ffda] border-[#64ffda]/50'
+                  : 'bg-[#0d1f1f] text-[#a1b4d9] border-[#2d393b]'
+              }`}
+            >
+              {customRangeActive ? 'Ranges: Custom' : 'Ranges'}
+            </button>
+            <button
               onClick={() => board.length >= 3 && triggerLiveSolve(board)}
               disabled={fetchingData || board.length < 3}
               className="px-2.5 py-1 bg-[#7aa6da] hover:bg-[#5a86ba] text-[#182628] rounded font-bold text-[10px] uppercase transition-all disabled:opacity-40"
@@ -699,6 +925,93 @@ const DashboardView: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* Custom 169-Hand Range Editor */}
+        {showRangeEditor && (
+          <div className="w-full bg-[#182628] border border-[#2d393b] rounded-[5px] p-3 mb-2 shadow-md">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-black uppercase tracking-wider text-[#64ffda]">
+                  Custom Range Weights (Zeno / Pio String or JSON)
+                </span>
+                <span className="text-[10px] font-mono text-[#a1b4d9]">
+                  e.g. AA, KK, QQ:0.75, AKs, AQo:0.5
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomRangeActive(true);
+                    if (liveMode && board.length >= 3) {
+                      triggerLiveSolve(board, {
+                        useCustomRanges: true,
+                        forceOopText: customOopRangeText,
+                        forceIpText: customIpRangeText,
+                      });
+                    }
+                  }}
+                  className="px-2.5 py-1 bg-[#64ffda] hover:bg-[#4cd4b5] text-[#00140f] rounded font-black text-[10px] uppercase"
+                >
+                  Apply Custom Ranges
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setCustomRangeActive(false);
+                    if (liveMode && board.length >= 3) {
+                      triggerLiveSolve(board, { useCustomRanges: false });
+                    } else {
+                      try {
+                        const spotName = `${activePosition.replace(' vs ', '_vs_')}_${activeTab.replace(' ', '')}`;
+                        const meta = await apiClient.get<any>(
+                          `/solutions/formation-ranges/?spot=${encodeURIComponent(spotName)}&rake_percent=${customRake}`
+                        );
+                        if (meta?.oop_range && meta?.ip_range) {
+                          setCustomOopRangeText(formatRangeWeights(meta.oop_range));
+                          setCustomIpRangeText(formatRangeWeights(meta.ip_range));
+                        }
+                      } catch (e) {
+                        console.error('Failed to reset formation ranges:', e);
+                      }
+                    }
+                  }}
+                  className="px-2.5 py-1 bg-[#2d393b] hover:bg-[#465f61] text-[#ccdbdc] rounded font-bold text-[10px] uppercase"
+                >
+                  Reset Default
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold uppercase text-[#a1b4d9]">
+                  OOP Range ({activePosition.split(' vs ')[0] || 'OOP'})
+                </label>
+                <textarea
+                  aria-label="OOP Custom Range"
+                  rows={3}
+                  value={customOopRangeText}
+                  onChange={(e) => setCustomOopRangeText(e.target.value)}
+                  placeholder="AA, KK, QQ, JJ:0.75, AKs, AQs, KQs:0.5..."
+                  className="w-full bg-[#0d1f1f] border border-[#2d393b] rounded p-2 text-[11px] font-mono text-white focus:outline-none focus:border-[#64ffda]"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold uppercase text-[#a1b4d9]">
+                  IP Range ({activePosition.split(' vs ')[1] || 'IP'})
+                </label>
+                <textarea
+                  aria-label="IP Custom Range"
+                  rows={3}
+                  value={customIpRangeText}
+                  onChange={(e) => setCustomIpRangeText(e.target.value)}
+                  placeholder="AA, KK, AKs, AQs:0.8, 76s:0.5..."
+                  className="w-full bg-[#0d1f1f] border border-[#2d393b] rounded p-2 text-[11px] font-mono text-white focus:outline-none focus:border-[#64ffda]"
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Canonical Texture Presets */}
         <div className="flex flex-wrap items-center gap-1.5 w-full mb-2 px-1">
@@ -712,8 +1025,8 @@ const DashboardView: React.FC = () => {
               <button
                 key={preset.id}
                 onClick={() => {
+                  clearActionTrees();
                   setBoard(preset.cards);
-                  if (liveMode) triggerLiveSolve(preset.cards);
                 }}
                 className={`px-2 py-1 rounded-[4px] text-[10.5px] font-bold transition-all flex items-center gap-1.5 border shadow-sm ${
                   isActive
@@ -742,12 +1055,43 @@ const DashboardView: React.FC = () => {
         {/* Decision Tree / Street Action Navigator */}
         <div className="w-full mt-2 mb-1">
           <DecisionTree
-            path={['Preflop', 'Flop', board.length >= 3 ? board.join(' ') : 'Flop Decision']}
-            actions={['Fold', 'Call', 'Raise (33% Pot)']}
-            frequencies={liveSolveStats?.overallFrequencies}
-            onActionClick={(action) => console.log('Action selected:', action)}
+            path={breadcrumbSteps.map((s) => s.label)}
+            actions={liveSolveStats?.availableActions || ['Fold', 'Call', 'Raise (33% Pot)']}
+            frequencies={liveSolveStats?.actionFrequencies || liveSolveStats?.overallFrequencies}
+            actingPlayer={liveSolveStats?.actingPlayer}
+            streetClosed={liveSolveStats?.streetClosed}
+            terminalFold={liveSolveStats?.terminalFold}
+            nextStreetPot={liveSolveStats?.nextStreetPot}
+            nextStreetLabel={board.length === 3 ? 'Turn' : board.length === 4 ? 'River' : undefined}
+            onActionClick={(action) => {
+              if (board.length === 3) {
+                setFlopActions((prev) => [...prev, action]);
+              } else if (board.length === 4) {
+                setTurnActions((prev) => [...prev, action]);
+              } else if (board.length === 5) {
+                setRiverActions((prev) => [...prev, action]);
+              }
+            }}
             onBreadcrumbClick={(index) => {
-              if (index === 0) handlePreflopClick();
+              const step = breadcrumbSteps[index];
+              if (!step) return;
+              if (step.kind === 'preflop') {
+                handlePreflopClick();
+              } else if (step.kind === 'flop') {
+                setBoard((prev) => prev.slice(0, 3));
+                setFlopActions((prev) => prev.slice(0, step.actLen));
+                setTurnActions([]);
+                setRiverActions([]);
+                setTurnEntryState(null);
+                setRiverEntryState(null);
+              } else if (step.kind === 'turn') {
+                setBoard((prev) => prev.slice(0, 4));
+                setTurnActions((prev) => prev.slice(0, step.actLen));
+                setRiverActions([]);
+                setRiverEntryState(null);
+              } else if (step.kind === 'river') {
+                setRiverActions((prev) => prev.slice(0, step.actLen));
+              }
             }}
           />
         </div>

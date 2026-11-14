@@ -1544,6 +1544,21 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
             ip_weights[i] = v.max(0.0);
         }
     }
+    let used_mask = board_mask(&board);
+    let mut alive_combo_counts = [0usize; N_CLASSES];
+    for h in 0..N_CLASSES {
+        let cnt = classes[h]
+            .combos
+            .iter()
+            .filter(|c| combo_alive(c, used_mask))
+            .count();
+        alive_combo_counts[h] = cnt;
+        if cnt == 0 {
+            oop_weights[h] = 0.0;
+            ip_weights[h] = 0.0;
+        }
+    }
+
     let effective_folded = if input.use_bunching {
         input.num_folded_players.min(8)
     } else {
@@ -1558,17 +1573,20 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
     let oop_dist = normalized_reach(&oop_weights, &classes, &board, &bunching_weights);
     let ip_dist = normalized_reach(&ip_weights, &classes, &board, &bunching_weights);
 
-    let pair_net_v2 = if input.force_exact {
+    // Learned leaf evaluators were trained on 3-card flops. On Turn (4 cards)
+    // and River (5 cards), use exact showdown / exhaustive river enumeration.
+    let is_flop = board.len() == 3;
+    let pair_net_v2 = if !is_flop || input.force_exact {
         None
     } else {
         crate::leaf_net::get_pair_net_v2()
     };
-    let pair_net = if input.force_exact || pair_net_v2.is_some() {
+    let pair_net = if !is_flop || input.force_exact || pair_net_v2.is_some() {
         None
     } else {
         crate::leaf_net::get_pair_net()
     };
-    let leaf_net = if input.force_exact || pair_net.is_some() || pair_net_v2.is_some() {
+    let leaf_net = if !is_flop || input.force_exact || pair_net.is_some() || pair_net_v2.is_some() {
         None
     } else {
         crate::leaf_net::get_leaf_net()
@@ -1600,7 +1618,13 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
     };
     let has_learned_leaves = pair_net.is_some() || pair_net_v2.is_some() || leaf_net.is_some();
 
-    let (eq, runouts) = {
+    let pair_use_exact = matches!(
+        std::env::var("GTO_PAIR_USE_EXACT").as_deref(),
+        Ok("on") | Ok("1") | Ok("true") | Ok("yes")
+    );
+    let need_exact_eq =
+        board.len() >= 4 || equity_pair.is_none() || input.collect_equity || pair_use_exact;
+    let (eq, runouts) = if need_exact_eq {
         let equity_samples = if board.len() >= 5 {
             1
         } else if board.len() == 4 {
@@ -1609,16 +1633,14 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
             input.equity_samples_override.unwrap_or(400).clamp(50, 20000)
         };
         compute_equity(&classes, &board, equity_samples, &bunching_weights)
+    } else {
+        (vec![0.5f32; N_CLASSES * N_CLASSES], 0)
     };
 
     // Diagnostic: route the *exact* sampled equity through the pair code path.
     // Used to tell "the learned matrix is wrong" apart from "the pair code
     // path is wrong" when a learned-leaf solve fails to converge.
-    let equity_pair = if equity_pair.is_some()
-        && matches!(
-            std::env::var("GTO_PAIR_USE_EXACT").as_deref(),
-            Ok("on") | Ok("1") | Ok("true") | Ok("yes")
-        ) {
+    let equity_pair = if equity_pair.is_some() && pair_use_exact {
         Some(eq.iter().map(|v| *v as f64).collect())
     } else {
         equity_pair
@@ -1808,8 +1830,104 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
         Vec::new()
     };
 
+    // Navigate intra-street action_sequence with Bayes' rule before dropping solver.
+    let mut cur_node = root;
+    let mut cur_oop_w = oop_weights.clone();
+    let mut cur_ip_w = ip_weights.clone();
+    let mut cur_reach_o = oop_dist.clone();
+    let mut cur_reach_i = ip_dist.clone();
+
+    let normalize_dist = |dist: &mut Vec<f64>| {
+        let s: f64 = dist.iter().sum();
+        if s > 1e-12 {
+            for x in dist.iter_mut() {
+                *x /= s;
+            }
+        }
+    };
+    let normalize_weights = |w: &mut Vec<f64>| {
+        let mx = w.iter().copied().fold(0.0f64, f64::max);
+        if mx > 1e-12 {
+            for x in w.iter_mut() {
+                *x /= mx;
+            }
+        }
+    };
+    let match_action = |actions: &[Action], query: &str| -> Option<usize> {
+        let q = query.trim().to_ascii_lowercase();
+        if let Some(i) = actions.iter().position(|a| a.label.to_ascii_lowercase() == q) {
+            return Some(i);
+        }
+        if q == "check" {
+            return actions.iter().position(|a| a.kind == ActionKind::Check);
+        }
+        if q == "call" {
+            return actions.iter().position(|a| a.kind == ActionKind::Call);
+        }
+        if q == "fold" {
+            return actions.iter().position(|a| a.kind == ActionKind::Fold);
+        }
+        if q == "all-in" || q == "allin" {
+            return actions.iter().position(|a| a.kind == ActionKind::AllIn);
+        }
+        if q.starts_with("bet") {
+            return actions
+                .iter()
+                .position(|a| a.kind == ActionKind::Bet && a.label.to_ascii_lowercase().contains(&q))
+                .or_else(|| actions.iter().position(|a| a.kind == ActionKind::Bet || a.kind == ActionKind::AllIn));
+        }
+        if q.starts_with("raise") {
+            return actions
+                .iter()
+                .position(|a| a.kind == ActionKind::Raise || a.kind == ActionKind::AllIn || a.kind == ActionKind::Bet);
+        }
+        None
+    };
+
+    for act_label in &input.action_sequence {
+        match &solver.tree.nodes[cur_node].kind {
+            NodeKind::Decision {
+                player,
+                actions,
+                children,
+                ..
+            } => {
+                if let Some(a_idx) = match_action(actions, act_label) {
+                    let node_strat = &avg[cur_node];
+                    if *player == 0 {
+                        for h in 0..N_CLASSES {
+                            let p = node_strat[h][a_idx];
+                            cur_oop_w[h] *= p;
+                            cur_reach_o[h] *= p;
+                        }
+                        normalize_dist(&mut cur_reach_o);
+                        normalize_weights(&mut cur_oop_w);
+                    } else {
+                        for h in 0..N_CLASSES {
+                            let p = node_strat[h][a_idx];
+                            cur_ip_w[h] *= p;
+                            cur_reach_i[h] *= p;
+                        }
+                        normalize_dist(&mut cur_reach_i);
+                        normalize_weights(&mut cur_ip_w);
+                    }
+                    cur_node = children[a_idx];
+                } else {
+                    break;
+                }
+            }
+            _ => break,
+        }
+    }
+
+    let (node_v_o, node_v_i) = if cur_node == root {
+        (v_o.clone(), v_i.clone())
+    } else {
+        solver.eval_profile(cur_node, &cur_reach_o, &cur_reach_i, &avg)
+    };
+
     // Snapshot scalar stats and release the mutable tree borrow before reading
-    // the root node to build the response.
+    // the tree nodes to build the response.
     let iterations = solver.iterations;
     let converged = solver.converged;
     let exploit_bb = solver.exploit_bb;
@@ -1832,48 +1950,138 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
     drop(solver);
     let tree_nodes = tree.nodes.len();
 
-    // Root (OOP) strategy + per-hand EV.
+    // Root decision actions needed for optimal_sizing fallback & root diagnostics.
     let root_decision = match &tree.nodes[root].kind {
-        NodeKind::Decision {
-            player: _,
-            actions,
-            ..
-        } => actions.clone(),
+        NodeKind::Decision { actions, .. } => actions.clone(),
         _ => return Err("root is not a decision node".into()),
     };
     let root_strat = &avg[root];
+
+    let node_invested = tree.nodes[cur_node].invested;
+    let next_street_pot = ((input.pot + node_invested[0] + node_invested[1]) * 1000.0).round() / 1000.0;
+    let max_inv = node_invested[0].max(node_invested[1]);
+    let next_street_stack = ((input.effective_stack - max_inv).max(0.0) * 1000.0).round() / 1000.0;
+
     let mut strategy: HashMap<String, ActionFrequencies> = HashMap::new();
     let mut strategy_detail: HashMap<String, HashMap<String, f64>> = HashMap::new();
     let mut hand_ev: HashMap<String, f64> = HashMap::new();
     let mut bucket_totals = [0.0f64; 3];
+    let mut available_actions: Vec<String> = Vec::new();
+    let mut action_frequencies: HashMap<String, f64> = HashMap::new();
+    let mut street_closed = false;
+    let mut terminal_fold = false;
+    let acting_player;
+    let mut actor_reach_ref: &[f64] = &cur_reach_o;
 
-    for h in 0..N_CLASSES {
-        let mut f = 0.0;
-        let mut c = 0.0;
-        let mut r = 0.0;
-        let mut detail: HashMap<String, f64> = HashMap::new();
-        for (a, action) in root_decision.iter().enumerate() {
-            let p = root_strat[h][a];
-            let bucket = map_action_bucket(action.kind);
-            match bucket {
-                0 => f += p,
-                1 => c += p,
-                _ => r += p,
+    match &tree.nodes[cur_node].kind {
+        NodeKind::Decision {
+            player, actions, ..
+        } => {
+            acting_player = if *player == 0 { "OOP" } else { "IP" }.to_string();
+            available_actions = actions.iter().map(|a| a.label.clone()).collect();
+            for a in actions {
+                action_frequencies.insert(a.label.clone(), 0.0);
             }
-            detail.insert(action.label.clone(), (p * 10000.0).round() / 10000.0);
-            bucket_totals[bucket] += p * oop_dist[h];
+            let node_strat = &avg[cur_node];
+            let actor_reach = if *player == 0 { &cur_reach_o } else { &cur_reach_i };
+            let actor_ev = if *player == 0 { &node_v_o } else { &node_v_i };
+            actor_reach_ref = actor_reach;
+
+            for h in 0..N_CLASSES {
+                let name = &classes[h].name;
+                let alive = alive_combo_counts[h] > 0;
+                let mut f = 0.0;
+                let mut c = 0.0;
+                let mut r = 0.0;
+                let mut detail: HashMap<String, f64> = HashMap::new();
+                for (a, action) in actions.iter().enumerate() {
+                    let p = if alive { node_strat[h][a] } else { 0.0 };
+                    let bucket = map_action_bucket(action.kind);
+                    match bucket {
+                        0 => f += p,
+                        1 => c += p,
+                        _ => r += p,
+                    }
+                    detail.insert(action.label.clone(), (p * 10000.0).round() / 10000.0);
+                    bucket_totals[bucket] += p * actor_reach[h];
+                    *action_frequencies.entry(action.label.clone()).or_insert(0.0) += p * actor_reach[h];
+                }
+                strategy.insert(
+                    name.clone(),
+                    ActionFrequencies {
+                        fold: (f * 10000.0).round() / 10000.0,
+                        call: (c * 10000.0).round() / 10000.0,
+                        bet_raise: (r * 10000.0).round() / 10000.0,
+                    },
+                );
+                strategy_detail.insert(name.clone(), detail);
+                hand_ev.insert(name.clone(), (actor_ev[h] * 1000.0).round() / 1000.0);
+            }
         }
+        NodeKind::Showdown => {
+            acting_player = "Showdown".to_string();
+            street_closed = true;
+            for h in 0..N_CLASSES {
+                let name = &classes[h].name;
+                let alive = alive_combo_counts[h] > 0;
+                strategy.insert(
+                    name.clone(),
+                    ActionFrequencies {
+                        fold: 0.0,
+                        call: if alive { 1.0 } else { 0.0 },
+                        bet_raise: 0.0,
+                    },
+                );
+                strategy_detail.insert(name.clone(), HashMap::new());
+                hand_ev.insert(name.clone(), (node_v_o[h] * 1000.0).round() / 1000.0);
+            }
+            bucket_totals[1] = 1.0;
+        }
+        NodeKind::Fold { player: folder } => {
+            acting_player = "Terminal".to_string();
+            terminal_fold = true;
+            let winner_ev = if *folder == 0 { &node_v_i } else { &node_v_o };
+            for h in 0..N_CLASSES {
+                let name = &classes[h].name;
+                strategy.insert(
+                    name.clone(),
+                    ActionFrequencies {
+                        fold: 1.0,
+                        call: 0.0,
+                        bet_raise: 0.0,
+                    },
+                );
+                strategy_detail.insert(name.clone(), HashMap::new());
+                hand_ev.insert(name.clone(), (winner_ev[h] * 1000.0).round() / 1000.0);
+            }
+            bucket_totals[0] = 1.0;
+        }
+    }
+
+    let af_sum: f64 = action_frequencies.values().sum();
+    if af_sum > 1e-12 {
+        for v in action_frequencies.values_mut() {
+            *v = ((*v / af_sum) * 10000.0).round() / 10000.0;
+        }
+    }
+
+    let mut posterior_oop_range: HashMap<String, f64> = HashMap::with_capacity(N_CLASSES);
+    let mut posterior_ip_range: HashMap<String, f64> = HashMap::with_capacity(N_CLASSES);
+    let mut alive_combos: HashMap<String, usize> = HashMap::with_capacity(N_CLASSES);
+    let mut active_reach: HashMap<String, f64> = HashMap::with_capacity(N_CLASSES);
+    for h in 0..N_CLASSES {
         let name = &classes[h].name;
-        strategy.insert(
-            name.clone(),
-            ActionFrequencies {
-                fold: (f * 10000.0).round() / 10000.0,
-                call: (c * 10000.0).round() / 10000.0,
-                bet_raise: (r * 10000.0).round() / 10000.0,
-            },
-        );
-        strategy_detail.insert(name.clone(), detail);
-        hand_ev.insert(name.clone(), (v_o[h] * 1000.0).round() / 1000.0);
+        let cnt = alive_combo_counts[h];
+        alive_combos.insert(name.clone(), cnt);
+        if cnt > 0 {
+            posterior_oop_range.insert(name.clone(), (cur_oop_w[h] * 10000.0).round() / 10000.0);
+            posterior_ip_range.insert(name.clone(), (cur_ip_w[h] * 10000.0).round() / 10000.0);
+            active_reach.insert(name.clone(), (actor_reach_ref[h] * 1_000_000.0).round() / 1_000_000.0);
+        } else {
+            posterior_oop_range.insert(name.clone(), 0.0);
+            posterior_ip_range.insert(name.clone(), 0.0);
+            active_reach.insert(name.clone(), 0.0);
+        }
     }
 
     let oop_check_freq = root_strat
@@ -1995,6 +2203,22 @@ pub fn solve(input: &SolverInput) -> Result<SolverOutput, String> {
         } else {
             Vec::new()
         },
+        street: match board.len() {
+            4 => "Turn".to_string(),
+            5 => "River".to_string(),
+            _ => "Flop".to_string(),
+        },
+        acting_player,
+        available_actions,
+        action_frequencies,
+        street_closed,
+        terminal_fold,
+        next_street_pot,
+        next_street_stack,
+        posterior_oop_range,
+        posterior_ip_range,
+        alive_combos,
+        active_reach,
     })
 }
 
@@ -2078,5 +2302,116 @@ mod tests {
         // No explicit profile falls back to the folded-count model.
         let fallback = resolve_bunching_weights(true, &[], 4);
         assert_eq!(fallback, card_bunching_weights(4));
+    }
+
+    #[test]
+    fn test_multistreet_turn_river_and_bayes_progression() {
+        let mut oop_range = HashMap::new();
+        let mut ip_range = HashMap::new();
+        for h in ["AA", "KK", "QQ", "JJ", "TT", "AKs", "AQs", "KQs", "AKo", "76s", "22"] {
+            oop_range.insert(h.to_string(), 1.0);
+            ip_range.insert(h.to_string(), 1.0);
+        }
+
+        // 1. Flop Check -> Bet 33% -> Call
+        let flop_in = SolverInput {
+            board: vec!["Ah".into(), "Kd".into(), "2c".into()],
+            oop_range: oop_range.clone(),
+            ip_range: ip_range.clone(),
+            pot: 5.5,
+            effective_stack: 100.0,
+            rake_percent: 0.0,
+            rake_cap: 0.0,
+            max_sizes_per_node: 1,
+            target_d_ev: 0.005,
+            max_iterations: 400,
+            time_limit_ms: 1500,
+            collect_leaves: false,
+            bet_fraction: Some(0.33),
+            ante_bb: 0.0,
+            num_folded_players: 4,
+            use_bunching: true,
+            bunching_weights: Vec::new(),
+            collect_equity: false,
+            equity_samples_override: None,
+            deterministic: false,
+            force_exact: false,
+            action_sequence: vec!["Check".into(), "Bet 33%".into(), "Call".into()],
+        };
+        let flop_out = solve(&flop_in).expect("flop solve failed");
+        assert_eq!(flop_out.street, "Flop");
+        assert!(flop_out.street_closed, "Check -> Bet 33% -> Call should close the flop");
+        assert!(flop_out.next_street_pot > 5.5, "pot should grow after bet+call");
+        assert!(flop_out.next_street_stack < 100.0, "stack should decrease after bet+call");
+        assert!(!flop_out.posterior_oop_range.is_empty());
+        assert!(!flop_out.posterior_ip_range.is_empty());
+
+        // Verify dead-card filtering on Ah Kd 2c: AA/KK/22 have 3 combos, AKs has 2 combos, QQ has 6 combos.
+        assert_eq!(flop_out.alive_combos.get("AA").copied(), Some(3));
+        assert_eq!(flop_out.alive_combos.get("QQ").copied(), Some(6));
+
+        // 2. Turn 7s with Bayes posterior ranges -> Check -> Check
+        let turn_in = SolverInput {
+            board: vec!["Ah".into(), "Kd".into(), "2c".into(), "7s".into()],
+            oop_range: flop_out.posterior_oop_range.clone(),
+            ip_range: flop_out.posterior_ip_range.clone(),
+            pot: flop_out.next_street_pot,
+            effective_stack: flop_out.next_street_stack,
+            rake_percent: 0.0,
+            rake_cap: 0.0,
+            max_sizes_per_node: 1,
+            target_d_ev: 0.005,
+            max_iterations: 400,
+            time_limit_ms: 1500,
+            collect_leaves: false,
+            bet_fraction: Some(0.5),
+            ante_bb: 0.0,
+            num_folded_players: 4,
+            use_bunching: true,
+            bunching_weights: Vec::new(),
+            collect_equity: false,
+            equity_samples_override: None,
+            deterministic: false,
+            force_exact: false,
+            action_sequence: vec!["Check".into(), "Check".into()],
+        };
+        let turn_out = solve(&turn_in).expect("turn solve failed");
+        assert_eq!(turn_out.street, "Turn");
+        assert_eq!(turn_out.leaf_mode, "exact-showdown");
+        assert!(turn_out.street_closed);
+        assert!(turn_out.exploitability_pct_pot <= 0.5, "turn expl {}% > 0.5%", turn_out.exploitability_pct_pot);
+        assert!(((turn_out.oop_ev + turn_out.ip_ev) - turn_in.pot).abs() < 1e-6);
+
+        // 3. River 2d -> dead card check (only 1 combo of 22 remains when 2c and 2d are on board)
+        let river_in = SolverInput {
+            board: vec!["Ah".into(), "Kd".into(), "2c".into(), "7s".into(), "2d".into()],
+            oop_range: turn_out.posterior_oop_range.clone(),
+            ip_range: turn_out.posterior_ip_range.clone(),
+            pot: turn_out.next_street_pot,
+            effective_stack: turn_out.next_street_stack,
+            rake_percent: 0.0,
+            rake_cap: 0.0,
+            max_sizes_per_node: 1,
+            target_d_ev: 0.005,
+            max_iterations: 400,
+            time_limit_ms: 1500,
+            collect_leaves: false,
+            bet_fraction: Some(0.75),
+            ante_bb: 0.0,
+            num_folded_players: 4,
+            use_bunching: true,
+            bunching_weights: Vec::new(),
+            collect_equity: false,
+            equity_samples_override: None,
+            deterministic: false,
+            force_exact: false,
+            action_sequence: Vec::new(),
+        };
+        let river_out = solve(&river_in).expect("river solve failed");
+        assert_eq!(river_out.street, "River");
+        assert_eq!(river_out.leaf_mode, "exact-showdown");
+        assert_eq!(river_out.alive_combos.get("22").copied(), Some(1));
+        assert!(river_out.exploitability_pct_pot <= 0.5, "river expl {}% > 0.5%", river_out.exploitability_pct_pot);
+        assert!(((river_out.oop_ev + river_out.ip_ev) - river_in.pot).abs() < 1e-6);
     }
 }

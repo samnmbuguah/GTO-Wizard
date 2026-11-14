@@ -368,4 +368,105 @@ describe('DashboardView', () => {
       expect(screen.getByText(/No Solution Found/i)).toBeInTheDocument();
     });
   });
+
+  it('navigates flop actions to turn with Bayesian posterior ranges', async () => {
+    (apiClient.get as any).mockResolvedValue([mockSolution]);
+    (apiClient.post as any).mockResolvedValue({
+      strategy: { AA: { fold: 0.0, call: 0.4, raise: 0.6 } },
+      strategy_detail: { AA: { Check: 0.4, 'Bet 33%': 0.6 } },
+      hand_ev: { AA: 3.2 },
+      alive_combos: { AA: 3 },
+      active_reach: { AA: 0.9 },
+      solve_time_ms: 42,
+      engine: 'Rust DCFR Engine',
+      street: 'flop',
+      acting_player: 'OOP',
+      available_actions: ['Check', 'Bet 33%'],
+      action_frequencies: { Check: 0.7, 'Bet 33%': 0.3 },
+      street_closed: true,
+      terminal_fold: false,
+      next_street_pot: 9.1,
+      next_street_stack: 95.5,
+      posterior_oop_range: { AA: 0.9 },
+      posterior_ip_range: { KK: 0.8 },
+    });
+
+    render(<DashboardView />, { wrapper: TestWrapper });
+
+    const presetBtn = await screen.findByText(/Dry Ace-High/i);
+    await act(async () => {
+      presetBtn.click();
+    });
+
+    await waitFor(() => {
+      expect(apiClient.post).toHaveBeenCalledWith(
+        '/solutions/live-solve/',
+        expect.objectContaining({ board: ['Ah', 'Kd', '2c'] })
+      );
+    });
+
+    const turnCard = await screen.findByTestId('card-7s');
+    await act(async () => {
+      turnCard.click();
+    });
+
+    await waitFor(() => {
+      expect(apiClient.post).toHaveBeenCalledWith(
+        '/solutions/live-solve/',
+        expect.objectContaining({
+          board: ['Ah', 'Kd', '2c', '7s'],
+          pot: 9.1,
+          effective_stack: 95.5,
+          oop_range: { AA: 0.9 },
+          ip_range: { KK: 0.8 },
+        })
+      );
+    });
+  });
+
+  it('submits custom 169-hand range strings when applied', async () => {
+    const { fireEvent } = await import('@testing-library/react');
+    (apiClient.get as any).mockResolvedValue([mockSolution]);
+    (apiClient.post as any).mockResolvedValue({
+      strategy: { AA: { fold: 0.0, call: 0.2, raise: 0.8 } },
+      strategy_detail: { AA: { Check: 0.2, 'Bet 33%': 0.8 } },
+      hand_ev: { AA: 4.1 },
+      solve_time_ms: 35,
+      engine: 'Rust DCFR Engine',
+    });
+
+    render(<DashboardView />, { wrapper: TestWrapper });
+
+    const presetBtn = await screen.findByText(/Dry Ace-High/i);
+    await act(async () => {
+      presetBtn.click();
+    });
+
+    const rangesBtn = await screen.findByRole('button', { name: /Custom Ranges/i });
+    await act(async () => {
+      rangesBtn.click();
+    });
+
+    const oopArea = await screen.findByLabelText(/OOP Custom Range/i);
+    const ipArea = await screen.findByLabelText(/IP Custom Range/i);
+    await act(async () => {
+      fireEvent.change(oopArea, { target: { value: 'AA, KK:0.5' } });
+      fireEvent.change(ipArea, { target: { value: 'AKs, 76s' } });
+    });
+
+    const applyBtn = screen.getByRole('button', { name: /Apply Custom Ranges/i });
+    await act(async () => {
+      applyBtn.click();
+    });
+
+    await waitFor(() => {
+      expect(apiClient.post).toHaveBeenCalledWith(
+        '/solutions/live-solve/',
+        expect.objectContaining({
+          oop_range: 'AA, KK:0.5',
+          ip_range: 'AKs, 76s',
+        })
+      );
+    });
+  });
 });

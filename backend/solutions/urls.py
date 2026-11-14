@@ -5,7 +5,7 @@ from .views import (
     StrategyLockViewSet, AggregateReportView, EquityDistributionView, 
     StudySessionViewSet, DynamicSizingView
 )
-from .live_views import LiveSolveView
+from .live_views import LiveSolveView, FormationRangesView
 
 router = DefaultRouter()
 router.register(r'solver-configs', SolverConfigViewSet)
@@ -19,5 +19,6 @@ urlpatterns = [
     path('solutions/<int:pk>/equity/', EquityDistributionView.as_view(), name='solution-equity'),
     path('solutions/dynamic-sizing/', DynamicSizingView.as_view(), name='solution-dynamic-sizing'),
     path('solutions/live-solve/', LiveSolveView.as_view(), name='solution-live-solve'),
+    path('solutions/formation-ranges/', FormationRangesView.as_view(), name='solution-formation-ranges'),
     path('', include(router.urls)),
 ]

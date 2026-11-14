@@ -101,7 +101,8 @@ class EngineBridge:
             raise ValueError("bunching_weights must contain 13 rank weights (2..A).")
         max_bets_per_node = int(raw_data.get("max_bets_per_node", raw_data.get("max_sizes_per_node", 1)))
 
-        return {
+        action_sequence = raw_data.get("action_sequence") or []
+        norm = {
             "board": [c.strip() for c in board[:5]],
             "oop_range": oop_range_norm,
             "ip_range": ip_range_norm,
@@ -117,6 +118,7 @@ class EngineBridge:
             "max_bets_per_node": max_bets_per_node,
             "target_dEV": float(raw_data.get("target_dEV", 0.005)),
             "max_iterations": int(raw_data.get("max_iterations", 500)),
+            "action_sequence": [str(a) for a in action_sequence],
             # Audit / dataset-generation knobs. They are optional and are only
             # forwarded when the caller sets them, so the live API keeps the
             # daemon's interactive defaults.
@@ -128,6 +130,8 @@ class EngineBridge:
         }
         if raw_data.get("equity_samples_override") is not None:
             norm["equity_samples_override"] = int(raw_data["equity_samples_override"])
+        if raw_data.get("bet_fraction") is not None:
+            norm["bet_fraction"] = float(raw_data["bet_fraction"])
         return norm
 
     async def solve(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -297,6 +301,19 @@ class EngineBridge:
             # Diagnostics from a discarded learned-leaf attempt (only present
             # when the engine fell back to exact showdown).
             "leaf_attempt": res.get("leaf_attempt"),
+            # Multi-street state machine & Bayesian posterior ranges
+            "street": str(res.get("street", "Turn" if len(res.get("board", [])) == 4 else ("River" if len(res.get("board", [])) == 5 else "Flop"))),
+            "acting_player": str(res.get("acting_player", "OOP")),
+            "available_actions": list(res.get("available_actions", [])),
+            "action_frequencies": dict(res.get("action_frequencies", {})),
+            "street_closed": bool(res.get("street_closed", False)),
+            "terminal_fold": bool(res.get("terminal_fold", False)),
+            "next_street_pot": float(res.get("next_street_pot", pot)),
+            "next_street_stack": float(res.get("next_street_stack", 100.0)),
+            "posterior_oop_range": dict(res.get("posterior_oop_range", {})),
+            "posterior_ip_range": dict(res.get("posterior_ip_range", {})),
+            "alive_combos": dict(res.get("alive_combos", {})),
+            "active_reach": dict(res.get("active_reach", {})),
         }
 
     async def _run_local_dls_solve(self, payload: Dict[str, Any], start_time: float) -> Dict[str, Any]:
@@ -398,6 +415,18 @@ class EngineBridge:
             "btn_cbet_frequency": btn_cbet,
             "bb_check_frequency": bb_check,
             "btn_check_frequency": btn_check,
+            "street": "Turn" if len(board) == 4 else ("River" if len(board) == 5 else "Flop"),
+            "acting_player": "OOP",
+            "available_actions": ["Check", f"Bet {int(optimal_size * 100)}%"],
+            "action_frequencies": {"Check": bb_check, f"Bet {int(optimal_size * 100)}%": round(1.0 - bb_check, 4)},
+            "street_closed": False,
+            "terminal_fold": False,
+            "next_street_pot": pot,
+            "next_street_stack": effective_stack,
+            "posterior_oop_range": oop_range,
+            "posterior_ip_range": ip_range,
+            "alive_combos": {},
+            "active_reach": {},
         }
         return self._normalize_response(res)
 
